@@ -56,7 +56,7 @@ the distibution, so to run on GazeCom data set you can just run
     $> python run_detection.py --config default_parameters.conf.json 
 
 IMPORTANT: the config file contains the path to GazeCom [3] gaze_arff folder; it assumes
-that you have downloaded the GazeCom.zip from [4] and
+that you have downloaded the [GazeCom.zip](http://michaeldorr.de/smoothpursuit/GazeCom.zip) and
 unzipped it in the parent directory into the folder GazeCom. If that is not the case, you can 
 either change the config file, or pass an additional --input-folder /path/to/your/GazeCom/folder
 argument.
@@ -144,10 +144,10 @@ For feedback and collaboration you can contact Mikhail Startsev via mikhail.star
 
 # VI. REFERENCES
 
-  [1] http://dl.acm.org/citation.cfm?id=2857521
+  [1] http://dl.acm.org/citation.cfm?id=2857521 : "Smooth pursuit detection based on multiple observers", Ioannis Agtzidis, Mikhail Startsev, Michael Dorr. ETRA'16
   
-  [2] http://ieeexplore.ieee.org/abstract/document/7851169/
+  [2] http://ieeexplore.ieee.org/abstract/document/7851169/ : "In the pursuit of (ground) truth: a hand-labelling tool for eye movements recorded during dynamic scene viewing", Ioannis Agtzidis, Mikhail Startsev, Michael Dorr. ETVIS'16
   
-  [3] http://jov.arvojournals.org/article.aspx?articleid=2121333
+  [3] http://jov.arvojournals.org/article.aspx?articleid=2121333 : "Variability of eye movements when viewing dynamic natural scenes", Michael Dorr, Thomas Martinetz, Karl R. Gegenfurtner, Erhardt Barth. JOV (2010)
   
-  [4] http://www.michaeldorr.de/smoothpursuit
+  [4] http://www.michaeldorr.de/smoothpursuit : Our eye movement classification project with an emphasis on smooth pursuit
