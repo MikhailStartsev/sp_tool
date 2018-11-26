@@ -1,0 +1,39 @@
+{
+    "GeneralArguments": {
+        "config_file": null,
+        "input_folder": "../GazeCom/gaze_arff/",
+        "gaze_file_pattern": "*.arff",
+        "input_data_type": null,
+        "verbose": false,
+        "movies": [],
+        "output_folder": null
+    },
+    "SaccadeDetector": {
+        "tolerance": 0.0,
+        "threshold_onset_fast_degree_per_sec": 137.5,
+        "threshold_onset_slow_degree_per_sec": 17.1875,
+        "threshold_offset_degree_per_sec": 17.1875,
+        "max_speed_degree_per_sec": 1031.25,
+        "min_duration_microsec": 15000,
+        "max_duration_microsec": 160000,
+        "velocity_integral_interval_microsec": 4000
+    },
+    "BlinkDetector": {
+        "max_distance_to_saccade_microsec": 25000
+    },
+    "FixationDetector": {
+        "prefiltering_interval_spread_threshold_degrees": 2.0,
+        "min_sp_duration_microsec": 50000,
+        "sliding_window_width_microsec": 50000,
+        "normalization_sliding_window_size_samples": 5,
+        "speed_threshold_degrees_per_sec": 2.0,
+        "sliding_window_criterion": "speed",
+        "intersaccadic_interval_duration_threshold_microsec": 150000
+    },
+    "SmoothPursuitDetector": {
+        "min_pts": "num_observers",
+        "min_observers": null,
+        "eps_deg": 2.0,
+        "time_slice_microsec": 40000
+    }
+}
