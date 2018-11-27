@@ -24,6 +24,18 @@ For the related data set, please temporarily cite its web page:
 
 This is an updated repository, with more evaluation metrics included, in particular. The original version's archive can be downloaded from http://michaeldorr.de/smoothpursuit/.
 
+The algorithm we implement here is using clustering to detect smooth pursuit. It has been noted that humans tend to collectively pursuit objects during video viewing, especially if those objects are interesting or surprising enough. In fact, the coherence of gaze of multiple observers has increased when distinct moving targets are present (see [3], Figure 6). We here directly utilised this idea to detect smooth pursuit.
+
+The algorithm first filters out blinks, saccades, and fixations (all of which are comparatively easy to detect relatively well). The rest of the samples are marked as "pursuit candidates" and clustered, in this case -- with a modified DBSCAN algorithm. The samples that belong to some cluster or other are finally labelled as smooth pursuit, the others -- as noise.
+
+<p align="center">
+<img src="https://github.com/MikhailStartsev/sp_tool/blob/master/figures/clustering.png" width=512>
+</p>
+
+The two coloured clusters on the figure above correspond to detected clusters (this data is for the same example video `ducks_boat` as used in Figure 6 of [3]; the clusters correspond to the two birds flying past the camera). The black dots are all pursuit candidate samples.
+
+At the time, this approach yielded state-of-the-art smooth pursuit detection perfrormance. The overall performance (for fixations, saccades, and pursuits) of this algorithm's implementation on the GazeCom data set is still very respectable, second only to our 2018 [deep learning-based approach](https://github.com/MikhailStartsev/deep_em_classifier) [5].
+
 # I. INSTALLATION.
 
 To use the package's python interface system-wide (and not just from its source directory), please run either
@@ -116,10 +128,10 @@ If you desire to use this method on another data set, you need to
 
 The rest of the distribution mainly consists of the following files:
   - arff_helper.py - a set of tools to handle the ARFF file format with certain additions to support various recording attributes, such as the physical dimensions of the monitor during recording.
-  - saccade_detector.py, blink_detector.py, fixation_detector.py and sp_detector.py, which perform the actual eye        movement classification. sp_detection.py contains the actual SP-DBSCAN implementation. It supports one extra mode of operation compared to regular DBSCAN (in class DBSCANWithMinObservers): setting a threshold for the number of different observers withing the neighbourhood (instead of specifying a threshold for the number of different points).
+  - saccade_detector.py, blink_detector.py, fixation_detector.py and sp_detector.py, which perform the actual eye movement classification. sp_detection.py contains the actual SP-DBSCAN implementation. It supports one extra mode of operation compared to regular DBSCAN (in class DBSCANWithMinObservers): setting a threshold for the number of different observers within the neighbourhood (instead of specifying a threshold for the number of different points).
   - evaluate.py - comparing the output of the algorithm (.arff files with an EYE_MOVEMENT_TYPE field in each) with the hand-labelled ground truth (in the format of the output of the tool in [2])
   - recording_processor.py - a set of methods to load the recording data and its preprocessing.
-  - examples/ - a folder with various use-cases for this tool, including converting data produced by EyeLink or SMI eye trackers to ARFF format and valuating on the GazeCom hand-labelled ground truth [4] labels.
+  - examples/ - a folder with various use-cases for this tool, including converting data produced by EyeLink or SMI eye trackers to ARFF format and evaluating on the GazeCom hand-labelled ground truth [4] labels.
 
 # IV. LICENSE
 
@@ -148,6 +160,8 @@ For feedback and collaboration you can contact Mikhail Startsev via mikhail.star
   
   [2] http://ieeexplore.ieee.org/abstract/document/7851169/ : "In the pursuit of (ground) truth: a hand-labelling tool for eye movements recorded during dynamic scene viewing", Ioannis Agtzidis, Mikhail Startsev, Michael Dorr. ETVIS'16
   
-  [3] http://jov.arvojournals.org/article.aspx?articleid=2121333 : "Variability of eye movements when viewing dynamic natural scenes", Michael Dorr, Thomas Martinetz, Karl R. Gegenfurtner, Erhardt Barth. JOV (2010)
+  [3] http://jov.arvojournals.org/article.aspx?articleid=2121333 : "Variability of eye movements when viewing dynamic natural scenes", Michael Dorr, Thomas Martinetz, Karl R. Gegenfurtner, Erhardt Barth. Journal of Vision (2010)
   
   [4] http://www.michaeldorr.de/smoothpursuit : Our eye movement classification project with an emphasis on smooth pursuit
+  
+  [5] https://link.springer.com/article/10.3758/s13428-018-1144-2 or https://rdcu.be/bbMo3 (the latter link has unrestricted access) : "1D CNN with BLSTM for automated classification of fixations, saccades, and smooth pursuits", Mikhail Startsev, Ioannis Agtzidis, Michael Dorr. Behavior Research Methods (2018)
