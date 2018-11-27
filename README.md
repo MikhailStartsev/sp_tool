@@ -152,7 +152,7 @@ license - GPL.
 
 # V. CONTACT
 
-For feedback and collaboration you can contact Mikhail Startsev via mikhail.startsev@tum.de, or any of the authors of [1] at < firstname.lastname > @tum.de.
+For feedback and collaboration you can contact Mikhail Startsev via mikhail.startsev@tum.de, or any of the authors of [1] at `< firstname.lastname > @tum.de`.
 
 # VI. REFERENCES
 
