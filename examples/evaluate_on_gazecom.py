@@ -1,6 +1,11 @@
 #!/usr/bin/env python
-from argparse import ArgumentParser
+import sys
+import os
+import warnings
 import glob
+import fnmatch
+import numpy as np
+from argparse import ArgumentParser
 
 # (make sure to first run `python setup.py install --user` in the source directory)
 from sp_tool.arff_helper import ArffHelper
@@ -8,12 +13,24 @@ from sp_tool.recording_processor import RecordingProcessor
 from sp_tool import evaluate
 
 
+def find_all_files_with_a_pattern(folder, pattern='*.arff'):
+    res = []
+    for dirpath, dirnames, filenames in os.walk(folder):
+        filenames = fnmatch.filter(filenames, pattern)
+        if filenames:
+            res += [os.path.join(dirpath, fname) for fname in filenames]
+    return res
+
+
 def evaluate_prepared_output(in_folder, movies=None,
                              hand_labelling_folder='../GazeCom/ground_truth/',
                              hand_labelling_expert='handlabeller_final',
                              in_file_wildcard_pattern='*.arff',
+                             expert_file_wildcard_pattern='*.arff',
                              algorithm_column=True,
-                             return_raw_statistic=False):
+                             return_raw_statistic=False,
+                             only_main_eye_movements=False,
+                             ignore_gazecom_folder_structure=False):
     # This extracts the paths to all the labelled files:
     #   - all subdirectories (i.e. all movies)
     #   - all .arff files (i.e. all observers)
@@ -29,6 +46,7 @@ def evaluate_prepared_output(in_folder, movies=None,
     :param hand_labelling_folder: folder with hand-labelling data
     :param hand_labelling_expert: which expert data to use
     :param in_file_wildcard_pattern: wildcard patter if input files (*.arff by default)
+    :param expert_file_wildcard_pattern: wildcard patter if ground truth files (*.arff by default)
     :param algorithm_column: the column that contains the output of an eye movement type classification algorithm;
                              by default, will look for EYE_MOVEMENT_TYPE column; if a column (i.e. attribute) name
                              is specified here, will attempt to convert it into a corresponding newly added
@@ -41,20 +59,29 @@ def evaluate_prepared_output(in_folder, movies=None,
 
                              It is set to True by default, which means that the attribute EYE_MOVEMENT_TYPE is being
                              used. This is suitable, for example, for the .arff files produced by this framework.
-
     :param return_raw_statistic: whether to return TP/TN/FN/FP instead of F1/precision/recall/etc.
+    :param only_main_eye_movements: only evaluate the "main" eye movements: fixations, saccades, and pursuits;
+                                    otherwise (by default) will find all eye movement labels and evaluate them
+    :param ignore_gazecom_folder_structure: ignore the folder structure of GazeCom (sub-folders for each movie,
+                                            files for each subject) and just look for all .arff files in the @in_folder
     :return:
     """
-    if not movies:
-        assigned_labels_files = sorted(glob.glob('{}/*/{}'.format(in_folder, in_file_wildcard_pattern)))
-        ground_truth_files = sorted(glob.glob('{}/*/*.arff'.format(hand_labelling_folder)))
+    if not ignore_gazecom_folder_structure:
+        if not movies:
+            assigned_labels_files = sorted(glob.glob('{}/*/{}'.format(in_folder,
+                                                                      in_file_wildcard_pattern)))
+            ground_truth_files = sorted(glob.glob('{}/*/{}'.format(hand_labelling_folder,
+                                                                   expert_file_wildcard_pattern)))
+        else:
+            # extract file names from respective directories only
+            assigned_labels_files = []
+            ground_truth_files = []
+            for movie in movies:
+                assigned_labels_files += sorted(glob.glob('{}/{}/{}'.format(in_folder, movie, in_file_wildcard_pattern)))
+                ground_truth_files += sorted(glob.glob('{}/{}/*.arff'.format(hand_labelling_folder, movie)))
     else:
-        # extract file names from respective directories only
-        assigned_labels_files = []
-        ground_truth_files = []
-        for movie in movies:
-            assigned_labels_files += sorted(glob.glob('{}/{}/{}'.format(in_folder, movie, in_file_wildcard_pattern)))
-            ground_truth_files += sorted(glob.glob('{}/{}/*.arff'.format(hand_labelling_folder, movie)))
+        ground_truth_files = find_all_files_with_a_pattern(hand_labelling_folder, expert_file_wildcard_pattern)
+        assigned_labels_files = find_all_files_with_a_pattern(in_folder, in_file_wildcard_pattern)
 
     assert len(assigned_labels_files) == len(ground_truth_files), \
         'A different number of input files provided: {} ground truth files and {} labelled files'.format(
@@ -63,14 +90,41 @@ def evaluate_prepared_output(in_folder, movies=None,
 
     # assigned_labels_objects = [ArffHelper.load(open(fname)) for fname in assigned_labels_files]
     # swapped the ArffHelper-loading of assigned arff files to support numerical labels of eye movements
+    #
     # loads all ARFFs, takes a bit of time
     rp = RecordingProcessor()
     assigned_labels_objects = rp.load_multiple_recordings(assigned_labels_files,
-                                                          labelled_eye_movement_column_arff=algorithm_column)
+                                                          labelled_eye_movement_column_arff=algorithm_column,
+                                                          suppress_warnings=True)
     ground_truth_objects = [ArffHelper.load(open(fname)) for fname in ground_truth_files]
 
     # evaluate for these eye movements (corresponds the possible EYE_MOVEMENT_TYPE labels)
-    em_labels = ['SP', 'FIX', 'SACCADE']
+    if only_main_eye_movements:
+        em_labels = ['SP', 'FIX', 'SACCADE']
+    else:
+        # if we are dealing with categorical attributes, find all labels that are used in the ground truth
+        if len(ground_truth_objects) > 0 and \
+                        ground_truth_objects[0]['data'][hand_labelling_expert].dtype.type is np.string_:
+            all_em_labels = [set(obj['data'][hand_labelling_expert]) for obj in ground_truth_objects]
+        else:
+            # if the ground truth labels are not given as strings, take the values they can typically assume
+            all_em_labels = [[x for x in evaluate.CORRESPONDENCE_TO_HAND_LABELLING_VALUES.keys() if x != 'UNKNOWN']]
+        em_labels = set().union(*all_em_labels)
+    print >> sys.stderr, 'Will evaluate the following labels:', sorted(em_labels)
+
+    # verify that the label sets intersect at all
+    all_assigned_labels = [set(obj['data']['EYE_MOVEMENT_TYPE']) for obj in assigned_labels_objects]
+    all_assigned_labels = set().union(*all_assigned_labels)
+    label_intersection = em_labels.intersection(all_assigned_labels)
+    if len(label_intersection) == 0:
+        warnings.warn('There is no intersection between evaluated ground truth labels ({}) '
+                      'and algorithmically assigned labels ({})!'.format(sorted(em_labels),
+                                                                         sorted(all_assigned_labels)))
+    elif len(label_intersection) != len(em_labels):
+        print >> sys.stderr, 'Intersection between evaluated ground truth labels and the algorithmically ' \
+                             'assigned labels is not fully covering the set of evaluated labels: ' \
+                             '{} vs {}'.format(sorted(label_intersection), sorted(em_labels))
+
     res_stats = {}
 
     for positive_label in em_labels:
@@ -113,12 +167,32 @@ def parse_args():
     parser.add_argument('--expert', required=False,
                         default='handlabeller_final',
                         help='Which hand-labelling expert\'s labels to use')
-    parser.add_argument('--pretty', '--pretty-print', action='store_true',
-                        help='Use pretty-printing of the resulting dictionary (results in a multi-line, '
-                             'but human-readable output)')
+    parser.add_argument('--expert-file-pattern', '--expert-pattern', required=False, default='*.arff',
+                        help='A wildcard-pattern for the files that should be taken as the ground truth. '
+                             'Can be useful to restrict the script to a part of the files present in the input '
+                             'directory, ex. \'*_baseline_*.arff\' vs \'*_updated_*.arff\''
+                             'Make sure to put single quotes around it!')
+    parser.add_argument('--one-line-output', '--one-line', action='store_true',
+                        help='The resulting statistics dictionary will be printed all on one line, instead of the '
+                             'default multi-line, but much easier human-readable output. This can be useful for '
+                             'storing outputs that correspond to multiple algorithms/parameter combination '
+                             'in one file.')
     parser.add_argument('--raw-statistics', '--raw', action='store_true',
                         help='Print out the raw statistics, instead of precision/recall/...')
-    return parser.parse_args()
+
+    parser.add_argument('--all-files', action='store_true',
+                        help='Ignore the assumed GazeCom folder structure and just find all files that match the '
+                             'pattern (for --input-folder) or are .arff files (for --hand-labelled folder).')
+    parser.add_argument('--all-eye-movements', action='store_true',
+                        help='Evaluate all eye movements, not just fixations/saccades/pursuits.')
+    parser.add_argument('--all', dest='all_allowed', action='store_true',
+                        help='Equivalent to setting --all-files and --all-eye-movements together.')
+    args = parser.parse_args()
+
+    if args.all_allowed:
+        args.all_files = True
+        args.all_eye_movements = True
+    return args
 
 if __name__ == '__main__':
     args = parse_args()
@@ -126,9 +200,12 @@ if __name__ == '__main__':
                                      hand_labelling_folder=args.hand_labelled,
                                      hand_labelling_expert=args.expert,
                                      in_file_wildcard_pattern=args.input_file_pattern,
+                                     expert_file_wildcard_pattern=args.expert_file_pattern,
                                      algorithm_column=args.algorithm_column,
-                                     return_raw_statistic=args.raw_statistics)
-    if not args.pretty:
+                                     return_raw_statistic=args.raw_statistics,
+                                     ignore_gazecom_folder_structure=args.all_files,
+                                     only_main_eye_movements=not args.all_eye_movements)
+    if args.one_line_output:
         print stats
     else:
         import json

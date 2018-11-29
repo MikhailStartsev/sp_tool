@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 from functools import wraps
 from collections import OrderedDict
 import inspect
@@ -70,9 +71,14 @@ def load_ARFF_as_arff_object(fname, eye_movement_type_attribute=None, eye_moveme
         # add the dedicated eye movement type column
         arff_obj = util.add_eye_movement_attribute(arff_obj)
         if eye_movement_type_mapping_dict is None:
-            # check if the column is not yet of the right format
-            correct_flag = all([item in EM_TYPE_ARFF_DATA_TYPE
-                                for item in arff_obj['data'][eye_movement_type_attribute]])
+            # Check if the column is not yet of the right format.
+            # Only need to do this if the attribute is numerical, not categorical!
+            if arff_obj['data'][eye_movement_type_attribute].dtype.type is not np.string_:
+                correct_flag = all([item in EM_TYPE_ARFF_DATA_TYPE
+                                    for item in arff_obj['data'][eye_movement_type_attribute]])
+            else:  # nothing to do here, already a categorical attribute
+                correct_flag = True
+
             if correct_flag:
                 # already the perfect values in the respective column, just put the same values in the special column
                 arff_obj['data']['EYE_MOVEMENT_TYPE'] = arff_obj['data'][eye_movement_type_attribute]

@@ -6,6 +6,8 @@ from collections import Counter, namedtuple
 import sys
 from sklearn.metrics import cohen_kappa_score
 
+import warnings
+
 Event = namedtuple('Event', ['type', 'start', 'end', 'duration'])
 
 # Ground truth is usually stored in ARFF files with a separate column for each hand-labelling expert (if multiple are
@@ -36,15 +38,24 @@ def get_majority_vote_efficient(obj, experts, positive_label):
 
     """
     assert len(experts) >= 1
+    # determine the type of labels
+    label_dtype = obj['data'][experts[0]].dtype
     if len(experts) == 1:
         # just one expert, he always agrees with himself
-        return obj['data'][experts[0]] == CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]
+        if label_dtype.type is np.string_:
+            # ground truth labels are already strings, no need for conversion
+            return obj['data'][experts[0]] == positive_label
+        else:  # ground truth labels are not strings, convert using the standard dictionary
+            return obj['data'][experts[0]] == CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]
     else:
         hand_labellings = obj['data'][experts]
-        hand_labellings_list = hand_labellings.view((np.float32, len(hand_labellings.dtype.names)))
+        hand_labellings_list = hand_labellings.view((label_dtype, len(hand_labellings.dtype.names)))
         thd = len(experts) / 2.0  # at least 50% of experts should agree
-        majority_vote = ((hand_labellings_list == CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]).sum(axis=1)
-                         >= thd).astype(int)
+        if label_dtype.type is np.string_:
+            majority_vote = ((hand_labellings_list == positive_label).sum(axis=1) >= thd).astype(int)
+        else:
+            majority_vote = ((hand_labellings_list ==
+                              CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]).sum(axis=1) >= thd).astype(int)
         return majority_vote
 
 
@@ -63,8 +74,11 @@ def get_majority_vote(obj, experts, exclude_values=None):
     get_majority_vote(arff_object1, ['expert1', 'expert2'])
 
     """
+    # determine the type of labels
+    label_dtype = obj['data'][experts[0]].dtype
+
     if len(experts) == 1:
-        return obj['data'][experts].astype(int)
+        return obj['data'][experts].astype(label_dtype if label_dtype.type is np.string_ else int)
     else:
         if exclude_values is not None:
             if not isinstance(exclude_values, list):
@@ -81,7 +95,7 @@ def get_majority_vote(obj, experts, exclude_values=None):
             if not candidates_set:
                 candidates_set = set(hand_labellings[i])
             majority_vote.append(max(candidates_set, key=hand_labellings[i].count))
-        majority_vote = np.asarray(majority_vote, dtype=np.int)
+        majority_vote = np.asarray(majority_vote, dtype=label_dtype if label_dtype.type is np.string_ else np.int)
 
         return majority_vote
 
@@ -146,7 +160,11 @@ def extract_events(labels, type_mapping_dict=None):
         event_len = len(list(grp_val))
         event_type = grp_key
         if type_mapping_dict is not None:
-            event_type = type_mapping_dict[event_type]
+            if event_type in type_mapping_dict:
+                event_type = type_mapping_dict[event_type]
+            elif not isinstance(event_type, basestring):
+                warnings.warn('A non-string label "{}" not found in the @type_maping_dict, keeping the label as-is.'.
+                              format(event_type))
         events.append(Event(type=event_type, start=current_i, end=current_i + event_len, duration=event_len))
         current_i += event_len
     return events
@@ -455,7 +473,13 @@ def evaluate_episodes_as_Hoppe_et_al(true_labels_list, assigned_labels_list, exp
     [1] http://ieeexplore.ieee.org/abstract/document/7851169/
     [2] https://arxiv.org/abs/1609.02452
     """
-    labels = ['FIX', 'SACCADE', 'SP', 'NOISE']  # skip the UNKNOWN label
+    # get all possible labels for the confusion matrix
+    if len(true_labels_list) > 0 and true_labels_list[0]['data'][experts[0]].dtype.type is not np.string_:
+        # dealing with non-categorical labels, use standard order of labels
+        labels = ['FIX', 'SACCADE', 'SP', 'NOISE']
+    else:
+        labels = [set(obj['data']['EYE_MOVEMENT_TYPE']) for obj in assigned_labels_list]
+        labels = list(set().union(*labels))
     raw_confusion = {k: 0.0 for k in labels}  # count the number of hits for each class
     raw_confusion_denominator = 0.0
 
@@ -505,10 +529,16 @@ def evaluate_episodes_as_Hoppe_et_al(true_labels_list, assigned_labels_list, exp
             # Record confusion matrix row and the @raw_stats.
             # Ensure that the @current_label - 1 is in tha valid range
             # (otherwise, it is some extra label, like PSO, which we ignore).
-            if 0 <= current_label - 1 < len(labels) and labels[current_label - 1] == positive_label:
+            if (isinstance(current_label, basestring) and current_label == positive_label) or \
+                    (isinstance(current_label, int) and (0 <= current_label - 1 < len(labels))
+                     and labels[current_label - 1] == positive_label):
                 raw_confusion_denominator += 1
                 if alg_majority_label in labels:
                     raw_confusion[alg_majority_label] += 1
+                elif alg_majority_label != 'UNKNOWN':
+                    print >> sys.stderr, 'Had to skip this label when computing the confusion matrix: ' \
+                                         '{}, while full label list contains {} (this should not happen!)'.\
+                        format(alg_majority_label, labels)
 
                 if alg_majority_label == positive_label:
                     # true: +, detected: +
@@ -534,7 +564,7 @@ def evaluate_episodes_as_Hoppe_et_al(true_labels_list, assigned_labels_list, exp
     else:
         stats = compute_statistics(raw_stats)
         stats['confusion'] = raw_confusion
-        stats['confusion-accuracy'] = raw_confusion[positive_label]
+        stats['confusion-accuracy'] = raw_confusion.get(positive_label, 0.0)
         return stats
 
 

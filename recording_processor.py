@@ -60,7 +60,8 @@ class RecordingProcessor:
         }
 
     def load_recording(self, fname, data_format=None,
-                       labelled_eye_movement_column_arff=None, labelled_eye_movement_mapping_dict_arff=None):
+                       labelled_eye_movement_column_arff=None, labelled_eye_movement_mapping_dict_arff=None,
+                       suppress_warnings=False):
         """
         Load gaze data file @fname into arff object. This method calls on saccade, blink and fixation detectors.
         Also remembers the file name in 'metadata' section.
@@ -85,6 +86,7 @@ class RecordingProcessor:
                                                         @eye_movement_type_attribute to values in the following set:
                                                         ['UNKNOWN', 'FIX', 'SACCADE', 'SP', 'NOISE', 'BLINK',
                                                         'NOISE_CLUSTER'] (as defined by recording_processor.py)
+        :param suppress_warnings: do not warn about the loaded data being assumed to have eye movement labels already
 
         :return: arff object with labelled 'SACCADE's, 'FIX's and 'BLINK's
 
@@ -124,7 +126,7 @@ class RecordingProcessor:
             self._blink_detector.detect(gaze_points, inplace=True)
             # mark fixations (inside the previously detected intersaccadic intervals)
             self._fixation_detector.detect(gaze_points, inplace=True)
-        else:
+        elif not suppress_warnings:
             warnings.warn('The data format "{}" is selected, hence the steps of saccade/blink/fixation detection '
                           'are omitted! If this is not the desired behaviour, check the function help.'.
                           format(data_format))
@@ -132,7 +134,8 @@ class RecordingProcessor:
 
     def load_multiple_recordings(self, fnames, data_format=None, validate_ppd=True,
                                  labelled_eye_movement_column_arff=None, labelled_eye_movement_mapping_dict_arff=None,
-                                 verbose=False):
+                                 verbose=False,
+                                 suppress_warnings=False):
         """
         Load multiple gaze data files into a list of arff objects with saccade intervals labeled.
 
@@ -171,6 +174,7 @@ class RecordingProcessor:
         with @result being the result of this function
 
         :param verbose: whether to output progress information
+        :param suppress_warnings: do not warn about not performing the PPD-consistency check
         :return: list of arff objects corresponding to the file names in @fnames
 
         Example:
@@ -179,9 +183,10 @@ class RecordingProcessor:
         """
         if labelled_eye_movement_column_arff is not None or labelled_eye_movement_mapping_dict_arff is not None:
             validate_ppd = False
-            warnings.warn('The passed arguments correspond to labelled ARFF format, pixel-per-degree value '
-                          'equality for all recordings validation step is omitted in this case. If this is not '
-                          'the desired behaviour, check function help.')
+            if not suppress_warnings:
+                warnings.warn('The passed arguments correspond to labelled ARFF format, pixel-per-degree value '
+                              'equality for all recordings validation step is omitted in this case. If this is not '
+                              'the desired behaviour, check function help.')
         res = []
         observer_id = 0
         if verbose:
@@ -192,7 +197,8 @@ class RecordingProcessor:
                                               labelled_eye_movement_column_arff=
                                               labelled_eye_movement_column_arff,
                                               labelled_eye_movement_mapping_dict_arff=
-                                              labelled_eye_movement_mapping_dict_arff)
+                                              labelled_eye_movement_mapping_dict_arff,
+                                              suppress_warnings=suppress_warnings)
             # extract trail id, add it to meta
             gaze_points['metadata']['observer_id'] = observer_id
             observer_id += 1
