@@ -104,6 +104,8 @@ def run_detection(params):
         raise ValueError('\'input_folder\' is a required parameter of the \'GeneralArguments\' group in @params!')
     folder_names = sorted(glob.glob('{}/*/'.format(in_folder)))  # getting all the folders of the input folder
     # extract names from path
+    if not folder_names and verbose:
+        print >> sys.stderr, 'No subfolders found under "{}"'.format(in_folder)
     folder_names = [os.path.splitext(os.path.basename(folder.rstrip('/')))[0] for folder in folder_names]
 
     movies = params['GeneralArguments'].get('movies')
@@ -301,7 +303,7 @@ def create_parameters_description():
             'help': 'Which movies out of the input folder to use (might be useful for train/test split). '
                     'The gaze data is supposed to be put under respective directories in the input folder. '
                     'If none are given, all available ones are used.',
-            'kwargs': {'nargs': '+', 'default': []}
+            'kwargs': {'nargs': '+', 'default': None}
         },
         {
             'main_argument_name': '--output-folder',

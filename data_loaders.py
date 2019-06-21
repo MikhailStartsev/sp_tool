@@ -8,6 +8,16 @@ import inspect
 from arff_helper import ArffHelper
 import util
 
+EM_VALUE_MAPPING_DEFAULT = {
+    0: 'UNKNOWN',
+    1: 'FIX',
+    2: 'SACCADE',
+    3: 'SP',
+    4: 'NOISE',
+    10: 'PSO',
+    11: 'BLINK'
+}
+
 
 def write_arff_result(func):
     @wraps(func)
@@ -40,20 +50,11 @@ def load_ARFF_as_arff_object(fname, eye_movement_type_attribute=None, eye_moveme
                                            (as defined by recording_processor.py)
     :return: an arff object
     """
-    # This is the inverse of the dictionary used in evaluation.py.
+    # EM_VALUE_MAPPING_DEFAULT is the inverse of the dictionary used in evaluation.py.
     # It can be used (with @eye_movement_type_mapping_dict='default'), for instance, to load the files where
     # different eye movements are labelled by numerical values rather than by categorical (i.e. strings), due to
     # arff file implementation in the framework that produced the labels, or some other reason.
     # These values correspond to the ones used in our hand-labelling tool [1].
-    load_ARFF_as_arff_object.EM_VALUE_MAPPING_DEFAULT = {
-        0: 'UNKNOWN',
-        1: 'FIX',
-        2: 'SACCADE',
-        3: 'SP',
-        4: 'NOISE',
-        10: 'PSO',
-        11: 'BLINK'
-    }
 
     arff_obj = ArffHelper.load(open(fname))
     # validate that we have all the essential data
@@ -85,9 +86,9 @@ def load_ARFF_as_arff_object(fname, eye_movement_type_attribute=None, eye_moveme
                 return arff_obj
             else:
                 # if None, act as 'default', if needed
-                eye_movement_type_mapping_dict = load_ARFF_as_arff_object.EM_VALUE_MAPPING_DEFAULT
+                eye_movement_type_mapping_dict = EM_VALUE_MAPPING_DEFAULT
         elif eye_movement_type_mapping_dict == 'default':
-            eye_movement_type_mapping_dict = load_ARFF_as_arff_object.EM_VALUE_MAPPING_DEFAULT
+            eye_movement_type_mapping_dict = EM_VALUE_MAPPING_DEFAULT
 
         assert isinstance(eye_movement_type_mapping_dict, dict), 'Argument @eye_movement_type_mapping_dict must be ' \
                                                                  'either a dict, or None, or a string "default"'

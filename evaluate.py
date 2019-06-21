@@ -1,25 +1,30 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
+import string
 import numpy as np
 import itertools
-from collections import Counter, namedtuple
+from collections import Counter, namedtuple, defaultdict
 import sys
-from sklearn.metrics import cohen_kappa_score
-
 import warnings
+import copy
 
-Event = namedtuple('Event', ['type', 'start', 'end', 'duration'])
+from sklearn.metrics import cohen_kappa_score
+import Levenshtein
+
+from data_loaders import EM_VALUE_MAPPING_DEFAULT
+import util
+
+class Event(object):
+    def __init__(self, event_type, start, end, duration):
+        self.type = event_type
+        self.start = start
+        self.end = end
+        self.duration = duration
 
 # Ground truth is usually stored in ARFF files with a separate column for each hand-labelling expert (if multiple are
 # present). Each hand-labelling expert column contains numerical data with the following correspondence to eye movement
 # types:
-CORRESPONDENCE_TO_HAND_LABELLING_VALUES = {
-    'UNKNOWN': 0,
-    'FIX': 1,
-    'SACCADE': 2,
-    'SP': 3,
-    'NOISE': 4
-}
+CORRESPONDENCE_TO_HAND_LABELLING_VALUES = {value: key for key, value in EM_VALUE_MAPPING_DEFAULT.iteritems()}
 
 
 def get_majority_vote_efficient(obj, experts, positive_label):
@@ -165,7 +170,7 @@ def extract_events(labels, type_mapping_dict=None):
             elif not isinstance(event_type, basestring):
                 warnings.warn('A non-string label "{}" not found in the @type_maping_dict, keeping the label as-is.'.
                               format(event_type))
-        events.append(Event(type=event_type, start=current_i, end=current_i + event_len, duration=event_len))
+        events.append(Event(event_type=event_type, start=current_i, end=current_i + event_len, duration=event_len))
         current_i += event_len
     return events
 
@@ -197,6 +202,407 @@ def check_event_intersection(event_a, event_b,
         return iou >= intersection_over_union_threshold, iou
 
 
+def evaluate_normalised_Levenshtein_dist(true_labels_list,
+                                         assigned_labels_list,
+                                         experts, positive_label='SP',
+                                         return_raw_stats=False,
+                                         verbose=False):
+    """
+    Sample- and episode-level normalised Levenshtein distance (used by [1] as EER and SER). Will also compute the
+    sample error rate (Hamming distance).
+
+    :param true_labels_list: list of arff objects produced with hand-labelling tool [2].
+    :param assigned_labels_list: list of arff objects produced with this tool (or loaded via RecordingProcessor).
+    :param experts: list of experts (for our data, one expert was the tie-corrector, so normally a list of one element
+                    should be used, ['handlabeller_final']).
+    :param positive_label: the positive label to be evaluated, usually 'SP'/'FIX'/'SACCADE' or None;
+                           if None, will evaluate for all labels combined.
+    :param return_raw_stats: whether to return raw statistics (lists of values) instead of averages
+    :param verbose: output runtime (debug) information
+    :return: evaluation results in a dictionary form
+
+    [1] https://link.springer.com/article/10.3758%2Fs13428-018-1133-5
+    [2] http://ieeexplore.ieee.org/abstract/document/7851169/
+    """
+    stats = {
+        'sample': [],
+        'episode': [],
+        'error_rate': {'nom': 0.0, 'denom': 0.0}
+    }
+
+    # recover the proper names of the events from hand-labelled data with the default scheme
+    mapping_labels_to_names = EM_VALUE_MAPPING_DEFAULT
+
+    for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
+        # check that the t-x-y data has all at least similar values
+        assert np.allclose(ground_truth['data']['time'], assigned_labels['data']['time'])
+        assert np.allclose(ground_truth['data']['x'], assigned_labels['data']['x'])
+        assert np.allclose(ground_truth['data']['y'], assigned_labels['data']['y'])
+
+        ground_truth_labels = get_majority_vote(ground_truth, experts)
+        # convert to label names
+        ground_truth_labels = [mapping_labels_to_names.get(val, val) for val in ground_truth_labels]
+
+        # string.printable without the string.whitespace characters
+        characters_to_encode_labels = string.digits + string.letters + string.punctuation
+        all_unique_labels = sorted(set(ground_truth_labels).union(set(assigned_labels['data']['EYE_MOVEMENT_TYPE'])))
+        assert len(all_unique_labels) <= len(characters_to_encode_labels), 'Too many ({}) possible labels, cannot ' \
+                                                                           'encode as single symbols more than {}. ' \
+                                                                           'Consider using fewer labels or running ' \
+                                                                           'this evaluation for each label ' \
+                                                                           'independently by passing a ' \
+                                                                           '@positive_label parameter.'.\
+            format(len(all_unique_labels), len(characters_to_encode_labels))
+        all_unique_labels_mapping = {val: characters_to_encode_labels[i] for i, val in enumerate(all_unique_labels)}
+        if positive_label is not None:
+            for key in all_unique_labels_mapping:
+                if key != positive_label:
+                    all_unique_labels_mapping[key] = '0'
+                else:
+                    all_unique_labels_mapping[key] = '1'
+
+        if verbose:
+            print 'For the positive label of {}, using the following mapping: {}'.format(positive_label,
+                                                                                     all_unique_labels_mapping)
+
+        # Sample-level distance
+        symbol_sequence_true = ''.join([all_unique_labels_mapping[x]
+                                        for x in ground_truth_labels])
+        symbol_sequence_assigned = ''.join([all_unique_labels_mapping[x]
+                                            for x in assigned_labels['data']['EYE_MOVEMENT_TYPE']])
+        stats['sample'].append(float(Levenshtein.distance(symbol_sequence_assigned, symbol_sequence_true)) /
+                               max(len(symbol_sequence_assigned), len(symbol_sequence_true)))
+
+        stats['error_rate']['nom'] += (np.array(list(symbol_sequence_true)) !=
+                                       np.array(list(symbol_sequence_assigned))).sum()
+        stats['error_rate']['denom'] += len(symbol_sequence_assigned)
+
+        # Event-level distance
+        ground_truth_events = extract_events(ground_truth_labels)
+        assigned_events = extract_events(assigned_labels['data']['EYE_MOVEMENT_TYPE'])
+
+        symbol_sequence_true = ''.join([all_unique_labels_mapping[x.type] for x in ground_truth_events])
+        symbol_sequence_assigned = ''.join([all_unique_labels_mapping[x.type] for x in assigned_events])
+
+        stats['episode'].append(float(Levenshtein.distance(symbol_sequence_assigned, symbol_sequence_true)) /
+                                max(len(symbol_sequence_assigned), len(symbol_sequence_true)))
+
+    if return_raw_stats:
+        return stats
+
+    for key in stats:
+        if key != 'error_rate':
+            stats[key] = np.mean(stats[key])
+        else:
+            stats[key] = stats[key]['nom'] / (stats[key]['denom'] if stats[key]['denom'] != 0 else 1.0)
+
+    return stats
+
+
+def evaluate_basic_statistics(true_labels_list,
+                              assigned_labels_list,
+                              experts, positive_label='SP',
+                              return_raw_stats=False,
+                              microseconds_in_time_unit=1.0):
+    """
+    Event-level basic statistics: number of events, average duration, average amplitude.
+    Alternatively, sample-level percentages of samples, if @positive_label is None.
+
+    :param true_labels_list: list of arff objects produced with hand-labelling tool [1].
+    :param assigned_labels_list: list of arff objects produced with this tool (or loaded via RecordingProcessor).
+    :param experts: list of experts (for our data, one expert was the tie-corrector, so normally a list of one element
+                    should be used, ['handlabeller_final']).
+    :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE');
+                           if None, will compute proportions of samples of all eye movement types
+    :param return_raw_stats: whether to return raw statistics (lists of values) instead of averages
+    :param microseconds_in_time_unit: how many microseconds in one unit of the 'time' attribute (1 for GazeCom);
+                                      if not 1 and not provided, treat "duration_ms" as a non-normalised duration
+                                      measurement
+    :return: evaluation results in a dictionary form
+
+    [1] http://ieeexplore.ieee.org/abstract/document/7851169/
+    """
+    amplitude_key = 'amplitude_deg'
+    try:
+        _ = util.calculate_ppd(true_labels_list[0], skip_consistency_check=True)
+    except:
+        amplitude_key = 'amplitude_px'
+
+    # different statistics are computed depending on the @positive_label
+    if positive_label is not None:
+        stats_to_initialise = [('count', 0.0),
+                               ('duration_ms', []),
+                               (amplitude_key, [])]
+    else:
+        stats_to_initialise = [('samples_amount', defaultdict(float))]
+        # just for validation
+        total_samples = {'true': 0, 'detected': 0}
+
+    stats = {
+        'true': dict(copy.deepcopy(stats_to_initialise)),  # have to copy, otherwise the dictionaries will be identical
+        'detected': dict(copy.deepcopy(stats_to_initialise))
+    }
+
+    # recover the proper names of the events from hand-labelled data with the default scheme
+    mapping_labels_to_names = EM_VALUE_MAPPING_DEFAULT
+
+    for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
+        # check that the t-x-y data has all at least similar values
+        assert np.allclose(ground_truth['data']['time'], assigned_labels['data']['time'])
+        assert np.allclose(ground_truth['data']['x'], assigned_labels['data']['x'])
+        assert np.allclose(ground_truth['data']['y'], assigned_labels['data']['y'])
+
+        ground_truth_labels = get_majority_vote(ground_truth, experts)
+
+        if positive_label is not None:
+            # skip last to avoid border effect
+            ground_truth_events = extract_events(ground_truth_labels, type_mapping_dict=mapping_labels_to_names)[:-1]
+            assigned_events = extract_events(assigned_labels['data']['EYE_MOVEMENT_TYPE'])[:-1]
+
+            def filter_lambda(x):
+                return x.type == positive_label
+            ground_truth_events = filter(filter_lambda, ground_truth_events)
+            assigned_events = filter(filter_lambda, assigned_events)
+
+            for stats_key, evaluated_events in zip(['true', 'detected'],
+                                                   [ground_truth_events, assigned_events]):
+                stats[stats_key]['count'] += len(evaluated_events)
+
+                stats[stats_key]['duration_ms'] += [(ground_truth['data']['time'][e.end] -
+                                                     ground_truth['data']['time'][e.start]) * microseconds_in_time_unit
+                                                    * 1e-3  # convert time units to microsec, then to ms
+                                                    for e in evaluated_events]
+                if amplitude_key.endswith('deg'):
+                    ppd = util.calculate_ppd(ground_truth, skip_consistency_check=True)
+                else:
+                    ppd = 1.0
+
+                stats[stats_key][amplitude_key] += [np.linalg.norm([(ground_truth['data'][coord][e.end] -
+                                                                     ground_truth['data'][coord][e.start]) / ppd
+                                                                    for coord in ['x', 'y']])
+                                                    for e in evaluated_events]
+        else:
+            # convert to label names
+            ground_truth_labels = np.array([mapping_labels_to_names.get(val, val) for val in ground_truth_labels])
+            total_samples['true'] += len(ground_truth_labels)
+            total_samples['detected'] += len(assigned_labels['data'])
+
+            for label in set(ground_truth_labels):
+                stats['true']['samples_amount'][label] += (ground_truth_labels == label).sum()
+            for label in set(assigned_labels['data']['EYE_MOVEMENT_TYPE']):
+                stats['detected']['samples_amount'][label] += (assigned_labels['data']['EYE_MOVEMENT_TYPE'] ==
+                                                               label).sum()
+
+    if positive_label is None:
+        # validate sample counts
+        for key in stats:
+            assert sum(stats[key]['samples_amount'].values()) == total_samples[key]
+
+    if return_raw_stats:
+        return stats
+
+    if positive_label is not None:
+        for key in stats:
+            for normalised_key in [amplitude_key, 'duration_ms']:
+                stats[key][normalised_key] = np.mean(stats[key][normalised_key])
+    else:
+        for key in stats:
+            denom = sum(stats[key]['samples_amount'].values())
+            stats[key]['samples_amount'] = {k: v / denom for k, v in stats[key]['samples_amount'].iteritems()}
+
+    return stats
+
+
+def evaluate_episodes_adjusted_Cohens_kappa(true_labels_list,
+                                            assigned_labels_list,
+                                            experts, positive_label='SP',
+                                            only_match_positive_events=True,
+                                            intersection_over_union_threshold=0.0,
+                                            random_seed=0,
+                                            return_raw_stats=True,
+                                            num_runs=1,
+                                            verbose=False):
+    """
+    The corrected version of the event-level Cohen's kappa scores [1] evaluation of the labelling result
+    (algorithm output) in @assigned_labels_list with hand-labelling expert's labels in @ground_truth_list.
+    Differently from [2], IoU is used to pick the best match instead of simple intersection.
+    Also added an option of limiting event matches to those with good IoU scores.
+
+    Cohen's kappa essentially compares the observed level of accuracy (event-level in this case) to the chance
+    level of agreement. We here modify the chance-level performance to eliminate bias against short events by
+    estimating the agreement of the randomly-shuffled sequence of events, and NOT the event labels like in [2].
+
+    Will match event by the largest IoU, create two list of labels (one for @true_labels_list,
+    one for @assigned_labels_list) that consist of three blocks:
+      (1) matched event labels
+      (2) missed event labels for the @true_labels_list-associated list, UNKNOWN-labels for the
+          @assigned_labels_list-associated list
+      (3) false alarm labels for the @assigned_labels_list-associated list, same number of UNKNOWN labels for the
+          @true_labels_list-associated list.
+    Will then compute standard Cohen's kappa on these.
+
+    Modifications over [2]:
+        - largest IoU used instead of simple intersection
+        - possibility to start "matching" events only when a certain IoU threshold is exceeded.
+
+    :param true_labels_list: list of arff objects produced with hand-labelling tool [3].
+    :param assigned_labels_list: list of arff objects produced with this tool (or loaded via RecordingProcessor).
+    :param experts: list of experts (for our data, one expert was the tie-corrector, so normally a list of one element
+                    should be used, ['handlabeller_final']).
+    :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE'); can be None,
+                           in which case will run the kappa computation with all labels present.
+    :param only_match_positive_events: if True (default), will only consider positive-label events for computing
+                                       the observed and chance agreement; ignored for @positive_label=None
+    :param intersection_over_union_threshold: (has to be a floating point number in the range of [0; 1]) only count
+                                              a "hit", if the IoU is no smaller than this threshold
+    :param random_seed: seed to the random shuffling
+    :param return_raw_stats: return a list of kappas, before averaging
+    :param num_runs: how many times to run the random event re-shuffling
+    :param verbose: output runtime (debug) information
+    :return: evaluation results in a dictionary form
+
+    [1] https://dl.acm.org/citation.cfm?id=3319836 - "A novel gaze event detection metric that is not fooled by
+    gaze-independent baselines", Startsev et al. 2019
+    [2] https://link.springer.com/article/10.3758%2Fs13428-018-1133-5
+    [3] http://ieeexplore.ieee.org/abstract/document/7851169/
+    """
+    if positive_label is None:
+        only_match_positive_events = False
+
+    rand = np.random.RandomState(seed=random_seed)
+    res = {'kappa': []}
+
+    # recover the proper names of the events from hand-labelled data with the default scheme
+    mapping_labels_to_names = EM_VALUE_MAPPING_DEFAULT
+
+    for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
+        # check that the t-x-y data has all at least similar values
+        assert np.allclose(ground_truth['data']['time'], assigned_labels['data']['time'])
+        assert np.allclose(ground_truth['data']['x'], assigned_labels['data']['x'])
+        assert np.allclose(ground_truth['data']['y'], assigned_labels['data']['y'])
+
+        ground_truth_labels = get_majority_vote(ground_truth, experts)
+        ground_truth_events = extract_events(ground_truth_labels, type_mapping_dict=mapping_labels_to_names)
+        assigned_events = extract_events(assigned_labels['data']['EYE_MOVEMENT_TYPE'])
+
+        if positive_label is not None:
+            for e in assigned_events:
+                if e.type != positive_label:
+                    e.type = '_WRONG_LABEL'
+            for e in ground_truth_events:
+                if e.type != positive_label:
+                    e.type = '_WRONG_LABEL'
+
+        assigned_events_shuffled_many = []
+        for _ in xrange(num_runs):
+            assigned_events_shuffled = copy.deepcopy(assigned_events)
+            rand.shuffle(assigned_events_shuffled)
+            current_i = 0
+            for e in assigned_events_shuffled:
+                e.start = current_i
+                e.end = e.start + e.duration
+                current_i += e.duration
+            assigned_events_shuffled_many.append(assigned_events_shuffled)
+
+        accuracies = {'observed': [], 'chance': []}
+
+        for key, evaluated_events in zip(['observed'] + ['chance'] * len(assigned_events_shuffled_many),
+                                         [assigned_events] + assigned_events_shuffled_many):
+            acc_nom = 0.0
+            acc_denom = 0.0
+
+            assigned_event_i = 0
+            for ground_truth_event in ground_truth_events:
+                # find the intersecting assigned events
+                # skip through the events that end before the current ground truth one
+                while assigned_event_i < len(evaluated_events) and \
+                                evaluated_events[assigned_event_i].end <= ground_truth_event.start:
+                    # detected event that missed
+                    if not only_match_positive_events or evaluated_events[assigned_event_i].type == positive_label:
+                        acc_denom += 1
+                    assigned_event_i += 1
+
+                hit_event_i = None
+                hit_iou = 0.0
+
+                candidate_event_i = assigned_event_i
+                # while the events keep (potentially) intersecting, keep iterating and checking the intersection
+                while candidate_event_i < len(evaluated_events) and \
+                      evaluated_events[candidate_event_i].start < ground_truth_event.end:
+                    intersection_flag, iou = check_event_intersection(ground_truth_event,
+                                                                      evaluated_events[candidate_event_i],
+                                                                      intersection_over_union_threshold=
+                                                                      intersection_over_union_threshold,
+                                                                      return_iou=True)
+                    if intersection_flag:
+                        # found the valid intersection of events, but is it the highest IoU?
+                        if iou > hit_iou:
+                            hit_event_i = candidate_event_i
+                            hit_iou = iou
+                    else:
+                        # intersection criteria are not fulfilled, but maybe there are better-intersected events ahead
+                        pass
+                    candidate_event_i += 1
+
+                if hit_event_i is None:
+                    # no match found -> Miss
+                    if not only_match_positive_events or ground_truth_event.type == positive_label:
+                        acc_denom += 1
+                else:
+                    # Found some match, set all events between @assigned_event_i and @hit_event_i as false alarms
+                    for candidate_event_i in range(assigned_event_i, hit_event_i):
+                        if not only_match_positive_events or evaluated_events[candidate_event_i].type == positive_label:
+                            acc_denom += 1
+                    # matched a pair = 2 events are "accounted for"
+                    if not only_match_positive_events:
+                        acc_denom += 2
+                    else:
+                        if ground_truth_event.type == positive_label:
+                            acc_denom += 1
+                        if evaluated_events[hit_event_i].type == positive_label:
+                            acc_denom += 1
+                    # only if the even types match, the accuracy nominator should be increased
+                    if ground_truth_event.type == evaluated_events[hit_event_i].type:
+                        # if matching only the positive type or the label matches either way
+                        if not only_match_positive_events or ground_truth_event.type == positive_label:
+                            acc_nom += 2
+
+                    # Move @assigned_event_i to @hit_i + 1 and start further processing there
+                    assigned_event_i = hit_event_i + 1
+
+            # went through all the ground truth events, let's see whether any detected events remain (all False Alarms)
+            for candidate_event_i in range(assigned_event_i, len(evaluated_events)):
+                if not only_match_positive_events or evaluated_events[candidate_event_i].type == positive_label:
+                    acc_denom += 1
+
+            if not only_match_positive_events:
+                assert len(ground_truth_events) + len(evaluated_events) == acc_denom, \
+                    'Different number of events matched + not matched compared to the total number of events: {} events ' \
+                    'in two lists in total, {} -- after (not) matching'.format(len(ground_truth_events) + len(evaluated_events),
+                                                                               acc_denom)
+            else:
+                num_pos_events = len([e for e in ground_truth_events + evaluated_events if e.type == positive_label])
+                assert num_pos_events == acc_denom, 'Found {} events in the accuracy denominator instead of expected {}'\
+                    .format(acc_denom, num_pos_events)
+            accuracies[key].append((acc_nom / acc_denom) if acc_denom > 0 else 0.0)
+
+        for key in accuracies:
+            accuracies[key] = np.mean(accuracies[key])
+        if accuracies['chance'] != 1:
+            res['kappa'].append((accuracies['observed'] - accuracies['chance']) / (1 - accuracies['chance']))
+        else:
+            if accuracies['observed'] == 1.0:
+                res['kappa'].append(0.0)
+            else:
+                res['kappa'].append(-1.0)
+
+    if return_raw_stats:
+        return res
+
+    res['kappa'] = np.nanmean(res['kappa'])
+    return res
+
+
 def evaluate_episodes_as_Zemblys_et_al(true_labels_list,
                                        assigned_labels_list,
                                        experts, positive_label='SP',
@@ -224,7 +630,8 @@ def evaluate_episodes_as_Zemblys_et_al(true_labels_list,
     :param assigned_labels_list: list of arff objects produced with this tool (or loaded via RecordingProcessor).
     :param experts: list of experts (for our data, one expert was the tie-corrector, so normally a list of one element
                     should be used, ['handlabeller_final']).
-    :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE').
+    :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE'); can be None,
+                           in which case will run the kappa computation with all labels present.
     :param intersection_over_union_threshold: (has to be a floating point number in the range of [0; 1]) only count
                                               a "hit", if the IoU is no smaller than this threshold
     :param verbose: output runtime (debug) information
@@ -238,8 +645,7 @@ def evaluate_episodes_as_Zemblys_et_al(true_labels_list,
     total_events = {'true': 0, 'assigned': 0}
 
     # recover the proper names of the events from hand-labelled data with the default scheme
-    from data_loaders import load_ARFF_as_arff_object
-    mapping_labels_to_names = load_ARFF_as_arff_object.EM_VALUE_MAPPING_DEFAULT
+    mapping_labels_to_names = EM_VALUE_MAPPING_DEFAULT
 
     for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
         # check that the t-x-y data has all at least similar values
@@ -369,8 +775,7 @@ def evaluate_episodes_as_Hooge_et_al(true_labels_list,
     }
 
     # recover the proper names of the events from hand-labelled data with the default scheme
-    from data_loaders import load_ARFF_as_arff_object
-    mapping_labels_to_names = load_ARFF_as_arff_object.EM_VALUE_MAPPING_DEFAULT
+    mapping_labels_to_names = EM_VALUE_MAPPING_DEFAULT
 
     for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
         # check that the t-x-y data has all at least similar values
@@ -568,8 +973,7 @@ def evaluate_episodes_as_Hoppe_et_al(true_labels_list, assigned_labels_list, exp
         return stats
 
 
-def evaluate(true_labels_list, assigned_labels_list, experts, positive_label='SP', return_raw_stats=False,
-             verbose=False):
+def evaluate_samples(true_labels_list, assigned_labels_list, experts, positive_label='SP', return_raw_stats=False):
     """
     Evaluate labelling result (algorithm output) in @assigned_labels_list with hand-labelling expert's labels
     in @ground_truth_list.
@@ -580,7 +984,6 @@ def evaluate(true_labels_list, assigned_labels_list, experts, positive_label='SP
                     should be used).
     :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE').
     :param return_raw_stats: whether to return raw statistics (TP/TN/FP/FN) or nicer (F1/precision/recall/...) ones
-    :param verbose: output runtime (debug) information
     :return: evaluation results in a dictionary form
 
     [1] http://ieeexplore.ieee.org/abstract/document/7851169/
@@ -597,43 +1000,109 @@ def evaluate(true_labels_list, assigned_labels_list, experts, positive_label='SP
         assert np.allclose(ground_truth['data']['x'], assigned_labels['data']['x'])
         assert np.allclose(ground_truth['data']['y'], assigned_labels['data']['y'])
 
-        assigned_labels_status_list = (assigned_labels['data']['EYE_MOVEMENT_TYPE'] == positive_label).astype(int)
+        if positive_label is not None:
+            assigned_labels_status_list = (assigned_labels['data']['EYE_MOVEMENT_TYPE'] == positive_label).astype(int)
 
-        ground_truth_status_list = get_majority_vote_efficient(ground_truth, experts, positive_label)
-        # ground_truth_status_list = (get_majority_vote(ground_truth, experts) ==
-        #                             CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]).astype(int)
+            ground_truth_status_list = get_majority_vote_efficient(ground_truth, experts, positive_label)
+            # ground_truth_status_list = (get_majority_vote(ground_truth, experts) ==
+            #                             CORRESPONDENCE_TO_HAND_LABELLING_VALUES[positive_label]).astype(int)
 
-        raw_stats['TP'] += ((ground_truth_status_list == 1) * (assigned_labels_status_list == 1)).sum()
-        raw_stats['FP'] += ((ground_truth_status_list == 0) * (assigned_labels_status_list == 1)).sum()
-        raw_stats['TN'] += ((ground_truth_status_list == 0) * (assigned_labels_status_list == 0)).sum()
-        raw_stats['FN'] += ((ground_truth_status_list == 1) * (assigned_labels_status_list == 0)).sum()
+            raw_stats['TP'] += ((ground_truth_status_list == 1) * (assigned_labels_status_list == 1)).sum()
+            raw_stats['FP'] += ((ground_truth_status_list == 0) * (assigned_labels_status_list == 1)).sum()
+            raw_stats['TN'] += ((ground_truth_status_list == 0) * (assigned_labels_status_list == 0)).sum()
+            raw_stats['FN'] += ((ground_truth_status_list == 1) * (assigned_labels_status_list == 0)).sum()
+        else:
+            ground_truth_labels = map(lambda x: EM_VALUE_MAPPING_DEFAULT[x], get_majority_vote(ground_truth, experts))
+            ground_truth_labels = np.array(ground_truth_labels)
+            raw_stats['TP'] += (ground_truth_labels == assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()
+            raw_stats['FP'] += (ground_truth_labels != assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()
 
     if return_raw_stats:
         stats = raw_stats
     else:
         stats = compute_statistics(raw_stats)
+    return stats
 
-    stats['episode_as_Hoppe_et_al'] = evaluate_episodes_as_Hoppe_et_al(true_labels_list=true_labels_list,
-                                                                       assigned_labels_list=assigned_labels_list,
-                                                                       experts=experts,
-                                                                       positive_label=positive_label,
-                                                                       return_raw_stats=return_raw_stats,
-                                                                       interval_vs_interval=False)
 
-    # stats['episode-vs-episode'] = evaluate_episodes_as_Hoppe_et_al(true_labels_list=true_labels_list,
-    #                                                 assigned_labels_list=assigned_labels_list,
-    #                                                 experts=experts,
-    #                                                 positive_label=positive_label,
-    #                                                 return_raw_stats=return_raw_stats,
-    #                                                 interval_vs_interval=True)
+def evaluate(true_labels_list, assigned_labels_list, experts, positive_label='SP', return_raw_stats=False,
+             microseconds_in_time_unit=1.0, verbose=False):
+    """
+    Evaluate labelling result (algorithm output) in @assigned_labels_list with hand-labelling expert's labels
+    in @ground_truth_list.
 
-    stats['episode_as_Hooge_et_al'] = evaluate_episodes_as_Hooge_et_al(true_labels_list=true_labels_list,
-                                                                       assigned_labels_list=assigned_labels_list,
-                                                                       experts=experts,
-                                                                       positive_label=positive_label,
-                                                                       return_raw_stats=return_raw_stats,
-                                                                       intersection_over_union_threshold=0.0,
-                                                                       verbose=verbose)
+    :param true_labels_list: list of arff objects produced with hand-labelling tool [1].
+    :param assigned_labels_list: list of arff objects produced with this tool (or loaded via RecordingProcessor).
+    :param experts: list of experts (for our data, one expert was the tie-corrector, so normally a list of one element
+                    should be used).
+    :param positive_label: the positive abel to be evaluated (normally would be 'SP'/'FIX'/'SACCADE').
+    :param return_raw_stats: whether to return raw statistics (TP/TN/FP/FN) or nicer (F1/precision/recall/...) ones
+    :param microseconds_in_time_unit: how many microseconds in one time unit (the "time" column of the .arff files);
+                                       needed to compute the correct event durations in ms; 1.0 for GazeCom
+    :param verbose: output runtime (debug) information
+    :return: evaluation results in a dictionary form
+
+    [1] http://ieeexplore.ieee.org/abstract/document/7851169/
+    """
+    stats = {}
+
+    stats.update(evaluate_samples(true_labels_list=true_labels_list,
+                                  assigned_labels_list=assigned_labels_list,
+                                  experts=experts,
+                                  positive_label=positive_label,
+                                  return_raw_stats=return_raw_stats))
+    # these do not run with a None for a @positive_label
+    if positive_label is not None:
+        stats['episode_as_Hoppe_et_al'] = evaluate_episodes_as_Hoppe_et_al(true_labels_list=true_labels_list,
+                                                                           assigned_labels_list=assigned_labels_list,
+                                                                           experts=experts,
+                                                                           positive_label=positive_label,
+                                                                           return_raw_stats=return_raw_stats,
+                                                                           interval_vs_interval=False)
+
+        # Outdated evaluation, can be enabled by simply uncommenting, if necessary
+        # stats['episode-vs-episode'] = evaluate_episodes_as_Hoppe_et_al(true_labels_list=true_labels_list,
+        #                                                 assigned_labels_list=assigned_labels_list,
+        #                                                 experts=experts,
+        #                                                 positive_label=positive_label,
+        #                                                 return_raw_stats=return_raw_stats,
+        #                                                 interval_vs_interval=True)
+
+        stats['episode_as_Hooge_et_al'] = evaluate_episodes_as_Hooge_et_al(true_labels_list=true_labels_list,
+                                                                           assigned_labels_list=assigned_labels_list,
+                                                                           experts=experts,
+                                                                           positive_label=positive_label,
+                                                                           return_raw_stats=return_raw_stats,
+                                                                           intersection_over_union_threshold=0.0,
+                                                                           verbose=verbose)
+
+        if False:
+            for iou_thd in np.arange(0, 1.05, 0.05):
+                stats['episode_as_Hooge_et_al']['IoU>={}'.format(iou_thd)] = evaluate_episodes_as_Hooge_et_al(
+                    true_labels_list=true_labels_list,
+                    assigned_labels_list=assigned_labels_list,
+                    experts=experts,
+                    positive_label=positive_label,
+                    return_raw_stats=return_raw_stats,
+                    intersection_over_union_threshold=iou_thd,
+                    verbose=verbose)
+
+        else:
+            stats['episode_as_Hooge_et_al']['IoU>=0.5'] = evaluate_episodes_as_Hooge_et_al(
+                true_labels_list=true_labels_list,
+                assigned_labels_list=assigned_labels_list,
+                experts=experts,
+                positive_label=positive_label,
+                return_raw_stats=return_raw_stats,
+                intersection_over_union_threshold=0.5,
+                verbose=verbose)
+
+    # these work fine with a None @positive_label
+    stats['basic_statistics'] = evaluate_basic_statistics(true_labels_list=true_labels_list,
+                                                          assigned_labels_list=assigned_labels_list,
+                                                          experts=experts,
+                                                          positive_label=positive_label,
+                                                          return_raw_stats=return_raw_stats,
+                                                          microseconds_in_time_unit=microseconds_in_time_unit)
 
     stats['episode_as_Zemblys_et_al'] = evaluate_episodes_as_Zemblys_et_al(true_labels_list=true_labels_list,
                                                                            assigned_labels_list=assigned_labels_list,
@@ -649,26 +1118,27 @@ def evaluate(true_labels_list, assigned_labels_list, experts, positive_label='SP
         intersection_over_union_threshold=0.5,
         verbose=verbose)
 
-    if False:
-        for iou_thd in np.arange(0, 1.05, 0.05):
-            stats['episode_as_Hooge_et_al']['IoU>={}'.format(iou_thd)] = evaluate_episodes_as_Hooge_et_al(
-                true_labels_list=true_labels_list,
-                assigned_labels_list=
-                assigned_labels_list,
-                experts=experts,
-                positive_label=positive_label,
-                return_raw_stats=return_raw_stats,
-                intersection_over_union_threshold=iou_thd,
-                verbose=verbose)
+    stats['episode_adjusted_Cohens_kappa'] = evaluate_episodes_adjusted_Cohens_kappa(
+        true_labels_list=true_labels_list,
+        assigned_labels_list=assigned_labels_list,
+        experts=experts,
+        positive_label=positive_label,
+        intersection_over_union_threshold=0.0,
+        return_raw_stats=return_raw_stats,
+        verbose=verbose)
 
-    else:
-        stats['episode_as_Hooge_et_al']['IoU>=0.5'] = evaluate_episodes_as_Hooge_et_al(true_labels_list=true_labels_list,
-                                                                                   assigned_labels_list=
-                                                                                   assigned_labels_list,
-                                                                                   experts=experts,
-                                                                                   positive_label=positive_label,
-                                                                                   return_raw_stats=return_raw_stats,
-                                                                                   intersection_over_union_threshold=0.5,
-                                                                                   verbose=verbose)
+    stats['episode_adjusted_Cohens_kappa']['IoU>=0.8'] = evaluate_episodes_adjusted_Cohens_kappa(
+        true_labels_list=true_labels_list,
+        assigned_labels_list=assigned_labels_list,
+        experts=experts,
+        positive_label=positive_label,
+        intersection_over_union_threshold=0.8,
+        return_raw_stats=return_raw_stats,
+        verbose=verbose)
 
+    stats['normalised_Levenshtein'] = evaluate_normalised_Levenshtein_dist(true_labels_list=true_labels_list,
+                                                                           assigned_labels_list=assigned_labels_list,
+                                                                           experts=experts,
+                                                                           positive_label=positive_label,
+                                                                           return_raw_stats=return_raw_stats)
     return stats

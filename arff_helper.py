@@ -39,7 +39,7 @@ class ArffHelper(object):
     During the dumping of the arff object, the metadata is placed back into the 'description' key of the arff object,
     and thus dumped as normal description would be.
     """
-    _METADATA_STRING = '@METADATA'
+    _METADATA_STRING = '@metadata'
     _METADATA_COLUMNS_COUNT = 3  # @METADATA KEY VALUE
     _METADATA_KEY_COLUMN = 1     # First key,
     _METADATA_VALUE_COLUMN = 2   # then value
@@ -310,9 +310,9 @@ class ArffHelper(object):
         description = []
 
         for i in xrange(len(lines)):
-            if lines[i].startswith(ArffHelper._METADATA_STRING):
+            if lines[i].lower().startswith(ArffHelper._METADATA_STRING):
                 words = lines[i].split(' ', ArffHelper._METADATA_COLUMNS_COUNT - 1)
-                if words[0] != ArffHelper._METADATA_STRING:
+                if words[0].lower() != ArffHelper._METADATA_STRING:
                     warnings.warn("In line {}: potential typo in @METADATA keyword".format(i + 1))
                     continue
 

@@ -371,5 +371,18 @@ class DBSCANWithMinObservers(DBSCANWithTimeSlice):
                  False if not.
 
         """
-        number_of_users = len(set(self._data_set[neighbourhood]['observer_id']))
+        number_of_users = self._get_number_of_unique_observers(neighbourhood)
         return number_of_users >= self.min_observers_abs_value
+
+    def _get_number_of_unique_observers(self, neighbourhood):
+        """
+        Compute the number of different observers in the @neighbourhood.
+        @self._data_set (a 6-column numpy array as data set to be clustered) is used to interpret
+        the @neighbourhood list.
+
+        :param neighbourhood: index list as neighbourhood to be validated.
+        :return: the number of unique observers in the @neighbourhood
+
+        """
+        return len(set(self._data_set[neighbourhood]['observer_id']))
+

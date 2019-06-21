@@ -12,6 +12,6 @@ setup(name='sp_tool',
       author_email='mikhail.startsev@tum.de',
       url='http://dl.acm.org/citation.cfm?id=2857521',
       keywords='smooth pursuit eye tracking DBSCAN',
-      install_requires=['liac-arff', 'numpy'],
+      install_requires=['liac-arff', 'numpy', 'scikit-learn', 'python-Levenshtein'],
       package_dir={'sp_tool': ''},
       packages=['sp_tool.examples', 'sp_tool'])
