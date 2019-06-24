@@ -1012,7 +1012,9 @@ def evaluate_samples(true_labels_list, assigned_labels_list, experts, positive_l
             raw_stats['TN'] += ((ground_truth_status_list == 0) * (assigned_labels_status_list == 0)).sum()
             raw_stats['FN'] += ((ground_truth_status_list == 1) * (assigned_labels_status_list == 0)).sum()
         else:
-            ground_truth_labels = map(lambda x: EM_VALUE_MAPPING_DEFAULT[x], get_majority_vote(ground_truth, experts))
+            ground_truth_labels = np.array(get_majority_vote(ground_truth, experts))
+            if not ground_truth_labels.dtype.name.startswith('str'):
+                ground_truth_labels = map(lambda x: EM_VALUE_MAPPING_DEFAULT[x], ground_truth_labels)
             ground_truth_labels = np.array(ground_truth_labels)
             raw_stats['TP'] += (ground_truth_labels == assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()
             raw_stats['FP'] += (ground_truth_labels != assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()
