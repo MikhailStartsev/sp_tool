@@ -146,10 +146,13 @@ def generate_next(args, generator_state):
 
 
 def preprocess_labels(obj, args):
-    if args.split_up_attribute is None or args.split_up_attribute == 'EYE_MOVEMENT_TYPE':
+    if args.split_up_attribute == 'EYE_MOVEMENT_TYPE':
+        # the correct attribute already exists, return as-is
         return obj
     obj = util.add_eye_movement_attribute(obj)
-    obj['data']['EYE_MOVEMENT_TYPE'] = [EM_VALUE_MAPPING_DEFAULT[x] for x in obj['data'][args.split_up_attribute]]
+    if args.split_up_attribute is not None:
+        # if we have the labels already, copy them over to the collect column
+        obj['data']['EYE_MOVEMENT_TYPE'] = [EM_VALUE_MAPPING_DEFAULT[x] for x in obj['data'][args.split_up_attribute]]
     return obj
 
 
