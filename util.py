@@ -93,7 +93,7 @@ def calculate_ppd(arff_object, skip_consistency_check=False):
         warnings.warn('Pixel-per-degree values for x-axis and y-axis differ '
                       'by more than {}% in source file {}! '
                       'PPD-x = {}, PPD-y = {}.'.format(ppd_relative_diff_thd * 100,
-                                                       arff_object['metadata']['filename'],
+                                                       arff_object['metadata'].get('filename', ''),
                                                        ppdx, ppdy))
     return (ppdx + ppdy) / 2
 
