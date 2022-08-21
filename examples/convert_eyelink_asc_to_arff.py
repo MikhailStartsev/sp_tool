@@ -209,7 +209,7 @@ def convert(fname, corresponding_video_name,
                     global_description_lines.append(line)
             else:
                 # this is a sample
-                values = map(soft_float_cast, parts)
+                values = list(map(soft_float_cast, parts))
                 if corneal_reflection_mode:  # last column is the CR status, ignore it
                     values = values[:-1]
 

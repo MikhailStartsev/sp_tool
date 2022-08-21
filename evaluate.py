@@ -3,16 +3,17 @@
 import string
 import numpy as np
 import itertools
-from collections import Counter, namedtuple, defaultdict
+from collections import Counter, defaultdict
 import sys
 import warnings
 import copy
 
 from sklearn.metrics import cohen_kappa_score
-import Levenshtein
+from jellyfish import levenshtein_distance
 
 from data_loaders import EM_VALUE_MAPPING_DEFAULT
 import util
+
 
 class Event(object):
     def __init__(self, event_type, start, end, duration):
@@ -24,7 +25,7 @@ class Event(object):
 # Ground truth is usually stored in ARFF files with a separate column for each hand-labelling expert (if multiple are
 # present). Each hand-labelling expert column contains numerical data with the following correspondence to eye movement
 # types:
-CORRESPONDENCE_TO_HAND_LABELLING_VALUES = {value: key for key, value in EM_VALUE_MAPPING_DEFAULT.iteritems()}
+CORRESPONDENCE_TO_HAND_LABELLING_VALUES = {value: key for key, value in EM_VALUE_MAPPING_DEFAULT.items()}
 
 
 def get_majority_vote_efficient(obj, experts, positive_label):
@@ -94,7 +95,7 @@ def get_majority_vote(obj, experts, exclude_values=None):
 
         majority_vote = []
         hand_labellings = obj['data'][experts].tolist()
-        for i in xrange(len(hand_labellings)):
+        for i in range(len(hand_labellings)):
             # max number of occurrences wins
             candidates_set = set(hand_labellings[i]).difference(exclude_values)
             if not candidates_set:
@@ -167,7 +168,7 @@ def extract_events(labels, type_mapping_dict=None):
         if type_mapping_dict is not None:
             if event_type in type_mapping_dict:
                 event_type = type_mapping_dict[event_type]
-            elif not isinstance(event_type, basestring):
+            elif not isinstance(event_type, str):
                 warnings.warn('A non-string label "{}" not found in the @type_maping_dict, keeping the label as-is.'.
                               format(event_type))
         events.append(Event(event_type=event_type, start=current_i, end=current_i + event_len, duration=event_len))
@@ -244,7 +245,7 @@ def evaluate_normalised_Levenshtein_dist(true_labels_list,
         ground_truth_labels = [mapping_labels_to_names.get(val, val) for val in ground_truth_labels]
 
         # string.printable without the string.whitespace characters
-        characters_to_encode_labels = string.digits + string.letters + string.punctuation
+        characters_to_encode_labels = string.digits + string.ascii_letters + string.punctuation
         all_unique_labels = sorted(set(ground_truth_labels).union(set(assigned_labels['data']['EYE_MOVEMENT_TYPE'])))
         assert len(all_unique_labels) <= len(characters_to_encode_labels), 'Too many ({}) possible labels, cannot ' \
                                                                            'encode as single symbols more than {}. ' \
@@ -262,15 +263,15 @@ def evaluate_normalised_Levenshtein_dist(true_labels_list,
                     all_unique_labels_mapping[key] = '1'
 
         if verbose:
-            print 'For the positive label of {}, using the following mapping: {}'.format(positive_label,
-                                                                                     all_unique_labels_mapping)
+            print('For the positive label of {}, using the following mapping: {}'.format(positive_label,
+                                                                                     all_unique_labels_mapping))
 
         # Sample-level distance
         symbol_sequence_true = ''.join([all_unique_labels_mapping[x]
                                         for x in ground_truth_labels])
         symbol_sequence_assigned = ''.join([all_unique_labels_mapping[x]
                                             for x in assigned_labels['data']['EYE_MOVEMENT_TYPE']])
-        stats['sample'].append(float(Levenshtein.distance(symbol_sequence_assigned, symbol_sequence_true)) /
+        stats['sample'].append(float(levenshtein_distance(symbol_sequence_assigned, symbol_sequence_true)) /
                                max(len(symbol_sequence_assigned), len(symbol_sequence_true)))
 
         stats['error_rate']['nom'] += (np.array(list(symbol_sequence_true)) !=
@@ -284,7 +285,7 @@ def evaluate_normalised_Levenshtein_dist(true_labels_list,
         symbol_sequence_true = ''.join([all_unique_labels_mapping[x.type] for x in ground_truth_events])
         symbol_sequence_assigned = ''.join([all_unique_labels_mapping[x.type] for x in assigned_events])
 
-        stats['episode'].append(float(Levenshtein.distance(symbol_sequence_assigned, symbol_sequence_true)) /
+        stats['episode'].append(float(levenshtein_distance(symbol_sequence_assigned, symbol_sequence_true)) /
                                 max(len(symbol_sequence_assigned), len(symbol_sequence_true)))
 
     if return_raw_stats:
@@ -361,8 +362,8 @@ def evaluate_basic_statistics(true_labels_list,
 
             def filter_lambda(x):
                 return x.type == positive_label
-            ground_truth_events = filter(filter_lambda, ground_truth_events)
-            assigned_events = filter(filter_lambda, assigned_events)
+            ground_truth_events = list(filter(filter_lambda, ground_truth_events))
+            assigned_events = list(filter(filter_lambda, assigned_events))
 
             for stats_key, evaluated_events in zip(['true', 'detected'],
                                                    [ground_truth_events, assigned_events]):
@@ -408,7 +409,7 @@ def evaluate_basic_statistics(true_labels_list,
     else:
         for key in stats:
             denom = sum(stats[key]['samples_amount'].values())
-            stats[key]['samples_amount'] = {k: v / denom for k, v in stats[key]['samples_amount'].iteritems()}
+            stats[key]['samples_amount'] = {k: v / denom for k, v in stats[key]['samples_amount'].items()}
 
     return stats
 
@@ -494,7 +495,7 @@ def evaluate_episodes_adjusted_Cohens_kappa(true_labels_list,
                     e.type = '_WRONG_LABEL'
 
         assigned_events_shuffled_many = []
-        for _ in xrange(num_runs):
+        for _ in range(num_runs):
             assigned_events_shuffled = copy.deepcopy(assigned_events)
             rand.shuffle(assigned_events_shuffled)
             current_i = 0
@@ -733,8 +734,8 @@ def evaluate_episodes_as_Zemblys_et_al(true_labels_list,
     assert len(true_labels_events) == len(assigned_labels_events)
 
     if positive_label is not None:
-        true_labels_events = map(lambda x: x if x == positive_label else '_WRONG_LABEL', true_labels_events)
-        assigned_labels_events = map(lambda x: x if x == positive_label else '_WRONG_LABEL', assigned_labels_events)
+        true_labels_events = [x if x == positive_label else '_WRONG_LABEL' for x in true_labels_events]
+        assigned_labels_events = [x if x == positive_label else '_WRONG_LABEL' for x in assigned_labels_events]
 
     stats = {'kappa': cohen_kappa_score(true_labels_events, assigned_labels_events)}
     return stats
@@ -788,8 +789,8 @@ def evaluate_episodes_as_Hooge_et_al(true_labels_list,
         assigned_events = extract_events(assigned_labels['data']['EYE_MOVEMENT_TYPE'])
 
         # only keep the relevant events
-        ground_truth_events = filter(lambda x: x.type == positive_label, ground_truth_events)
-        assigned_events = filter(lambda x: x.type == positive_label, assigned_events)
+        ground_truth_events = [x for x in ground_truth_events if x.type == positive_label]
+        assigned_events = [x for x in assigned_events if x.type == positive_label]
         raw_stats['Total detected events'] += len(assigned_events)
 
         assigned_event_i = 0
@@ -802,7 +803,7 @@ def evaluate_episodes_as_Hooge_et_al(true_labels_list,
                 assigned_event_i += 1
                 raw_stats['FP'] += 1  # we had to skip a detected event because it didn't match anything -> False Alarm
                 if verbose:
-                    print >> sys.stderr, 'Registered a False Alarm for', assigned_events[assigned_event_i - 1]
+                    print('Registered a False Alarm for', assigned_events[assigned_event_i - 1], file=sys.stderr)
 
             hit_event_i = None
             hit_iou = 0.0
@@ -822,26 +823,26 @@ def evaluate_episodes_as_Hooge_et_al(true_labels_list,
                     assigned_event_i += 1
                     raw_stats['TP'] += 1  # found a match -> Hit
                     if verbose:
-                        print >> sys.stderr, 'Registered a Hit for', ground_truth_event, 'and', assigned_events[assigned_event_i - 1]
+                        print('Registered a Hit for', ground_truth_event, 'and', assigned_events[assigned_event_i - 1], file=sys.stderr)
 
                     break
                 else:
                     assigned_event_i += 1
                     raw_stats['FP'] += 1  # we had to skip a detected event because it didn't match anything -> False Alarm
                     if verbose:
-                        print >> sys.stderr, 'Registered a False Alarm for', assigned_events[assigned_event_i - 1]
+                        print('Registered a False Alarm for', assigned_events[assigned_event_i - 1], file=sys.stderr)
 
             if hit_event_i is None:
                 raw_stats['FN'] += 1  # no match found -> Miss
                 if verbose:
-                    print >> sys.stderr, 'Registered a Miss for', ground_truth_event
+                    print('Registered a Miss for', ground_truth_event, file=sys.stderr)
             raw_stats['Total IoU'] += hit_iou  # 0 if no match was found
 
         # went through all the ground truth events, let's see whether any detected events remain (all False Alarms)
         if assigned_event_i < len(assigned_events):
             raw_stats['FP'] += len(assigned_events) - assigned_event_i
             if verbose:
-                print >> sys.stderr, 'Registered', len(assigned_events) - assigned_event_i, 'additional False Alarms'
+                print('Registered', len(assigned_events) - assigned_event_i, 'additional False Alarms', file=sys.stderr)
 
     if return_raw_stats:
         return raw_stats
@@ -934,16 +935,16 @@ def evaluate_episodes_as_Hoppe_et_al(true_labels_list, assigned_labels_list, exp
             # Record confusion matrix row and the @raw_stats.
             # Ensure that the @current_label - 1 is in tha valid range
             # (otherwise, it is some extra label, like PSO, which we ignore).
-            if (isinstance(current_label, basestring) and current_label == positive_label) or \
-                    (isinstance(current_label, int) and (0 <= current_label - 1 < len(labels))
+            if (isinstance(current_label, str) and current_label == positive_label) or \
+                    (np.issubdtype(type(current_label), np.integer) and (0 <= current_label - 1 < len(labels))
                      and labels[current_label - 1] == positive_label):
                 raw_confusion_denominator += 1
                 if alg_majority_label in labels:
                     raw_confusion[alg_majority_label] += 1
                 elif alg_majority_label != 'UNKNOWN':
-                    print >> sys.stderr, 'Had to skip this label when computing the confusion matrix: ' \
+                    print('Had to skip this label when computing the confusion matrix: ' \
                                          '{}, while full label list contains {} (this should not happen!)'.\
-                        format(alg_majority_label, labels)
+                        format(alg_majority_label, labels), file=sys.stderr)
 
                 if alg_majority_label == positive_label:
                     # true: +, detected: +
@@ -989,10 +990,10 @@ def evaluate_samples(true_labels_list, assigned_labels_list, experts, positive_l
     [1] http://ieeexplore.ieee.org/abstract/document/7851169/
     """
     raw_stats = {
-        'TP': 0,
-        'FP': 0,
-        'TN': 0,
-        'FN': 0
+        'TP': 0.,
+        'FP': 0.,
+        'TN': 0.,
+        'FN': 0.
     }
     for ground_truth, assigned_labels in zip(true_labels_list, assigned_labels_list):
         # check that the t-x-y data has all at least similar values
@@ -1014,7 +1015,7 @@ def evaluate_samples(true_labels_list, assigned_labels_list, experts, positive_l
         else:
             ground_truth_labels = np.array(get_majority_vote(ground_truth, experts))
             if not ground_truth_labels.dtype.name.startswith('str'):
-                ground_truth_labels = map(lambda x: EM_VALUE_MAPPING_DEFAULT[x], ground_truth_labels)
+                ground_truth_labels = [EM_VALUE_MAPPING_DEFAULT[x] for x in ground_truth_labels]
             ground_truth_labels = np.array(ground_truth_labels)
             raw_stats['TP'] += (ground_truth_labels == assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()
             raw_stats['FP'] += (ground_truth_labels != assigned_labels['data']['EYE_MOVEMENT_TYPE']).sum()

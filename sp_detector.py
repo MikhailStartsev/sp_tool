@@ -52,7 +52,7 @@ class SmoothPursuitDetector(object):
                                        inplace=inplace)
 
 
-class DBSCANWithTimeSlice(object):
+class DBSCANWithTimeSlice(object, metaclass=abc.ABCMeta):
     """
     The class is based on DBSCAN algorithm used for density-based data clustering
     (we run this to detect SP, after pre-filtering has removed saccades and fixations).
@@ -72,7 +72,6 @@ class DBSCANWithTimeSlice(object):
     of at least @min_observers different observers are present in the neighbourhood).
 
     """
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, eps_deg=2.0, time_slice_microsec=40000):
         """
@@ -119,7 +118,7 @@ class DBSCANWithTimeSlice(object):
             gaze_points_list = copy.deepcopy(gaze_points_list)
 
         # add global indexing to be able to reference the particular sample even after clustering all in one structure
-        for ind in xrange(len(gaze_points_list)):
+        for ind in range(len(gaze_points_list)):
             ArffHelper.add_column(gaze_points_list[ind], name='global_index', dtype='INTEGER', default_value=-1)
             gaze_points_list[ind]['data']['global_index'] = np.arange(gaze_points_list[ind]['data'].shape[0])
 
@@ -130,7 +129,7 @@ class DBSCANWithTimeSlice(object):
 
         current_cluster_id = 0
 
-        for i in xrange(len(self._data_set)):
+        for i in range(len(self._data_set)):
             if self._data_set[i]['visited_flag'] == 1:
                 continue
             else:
@@ -142,11 +141,11 @@ class DBSCANWithTimeSlice(object):
                     current_cluster_id += 1
 
         # create a new column in gaze_points_list for CLUSTER_ID
-        for i in xrange(len(gaze_points_list)):
+        for i in range(len(gaze_points_list)):
             ArffHelper.add_column(gaze_points_list[i], 'CLUSTER_ID', 'NUMERIC', -1)
 
         # label data in gaze_points_list as SP according to CLUSTER_ID
-        for i in xrange(len(self._data_set)):
+        for i in range(len(self._data_set)):
             observer_id = int(self._data_set[i]['observer_id'])
             global_index = self._data_set[i]['global_index']
 
@@ -157,7 +156,7 @@ class DBSCANWithTimeSlice(object):
                 gaze_points_list[observer_id]['data']['EYE_MOVEMENT_TYPE'][global_index] = 'NOISE_CLUSTER'
 
         # can now remove the global_index column
-        for ind in xrange(len(gaze_points_list)):
+        for ind in range(len(gaze_points_list)):
             ArffHelper.remove_column(gaze_points_list[ind], name='global_index')
 
         return gaze_points_list

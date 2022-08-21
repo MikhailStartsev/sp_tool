@@ -5,8 +5,10 @@ import os
 import sys
 import argparse
 import glob
-from collections import OrderedDict, Iterable, defaultdict
+from typing import Iterable
+from collections import defaultdict, OrderedDict
 import json
+import traceback
 
 from saccade_detector import SaccadeDetector
 from blink_detector import BlinkDetector
@@ -82,7 +84,7 @@ def run_detection(params):
         out_folder = tempfile.mkdtemp(prefix='sp_tool_')
         warnings.warn('No output folder provided, using {}'.format(out_folder))
     if verbose:
-        print >> sys.stderr, 'Outputs will be written to folder', out_folder
+        print('Outputs will be written to folder', out_folder, file=sys.stderr)
 
     saccade_detector = SaccadeDetector(**params['SaccadeDetector'])
     blink_detector = BlinkDetector(**params['BlinkDetector'])
@@ -105,8 +107,8 @@ def run_detection(params):
     folder_names = sorted(glob.glob('{}/*/'.format(in_folder)))  # getting all the folders of the input folder
     # extract names from path
     if not folder_names and verbose:
-        print >> sys.stderr, 'No subfolders found under "{}"'.format(in_folder)
-    folder_names = [os.path.splitext(os.path.basename(folder.rstrip('/')))[0] for folder in folder_names]
+        print('No subfolders found under "{}"'.format(in_folder), file=sys.stderr)
+    folder_names = [os.path.basename(folder.rstrip(os.path.sep)) for folder in folder_names]
 
     movies = params['GeneralArguments'].get('movies')
     if movies:  # not empty, restrict to these folders only
@@ -114,7 +116,7 @@ def run_detection(params):
         folder_names = [fn for fn in folder_names if fn in movies]
 
     if verbose:
-        print >> sys.stderr, 'Working with movies:', folder_names
+        print('Working with movies:', folder_names, file=sys.stderr)
 
     # data files extension
     gaze_pattern = params['GeneralArguments'].get('gaze_file_pattern', '*.coord')
@@ -126,7 +128,7 @@ def run_detection(params):
         if not os.path.exists(full_out_folder):
             os.makedirs(full_out_folder)
         if verbose:
-            print >> sys.stderr, 'Started processing for {},'.format(movie), 'results will appear in', full_out_folder
+            print('Started processing for {},'.format(movie), 'results will appear in', full_out_folder, file=sys.stderr)
 
         # The next lines load the data files of the recording with one particular movie.
         # To do this, here we provide a regex that includes all the .{extension} files in the respective folder.
@@ -134,9 +136,9 @@ def run_detection(params):
         #
         gaze_data_files = sorted(glob.glob('{}/{}/{}'.format(in_folder, movie, gaze_pattern)))
         if len(gaze_data_files) == 0:
-            print >> sys.stderr, 'Found 0 files with this pattern: "{}". Omitting this directory.'.format(
+            print('Found 0 files with this pattern: "{}". Omitting this directory.'.format(
                 '{}/{}/{}'.format(in_folder, movie, gaze_pattern)
-            )
+            ), file=sys.stderr)
             continue
         try:
             # The next line loads the data, labels saccades, blinks and fixations.
@@ -144,7 +146,7 @@ def run_detection(params):
                 gaze_data_files, verbose=verbose, data_format=params['GeneralArguments'].get('input_data_type'))
             # This will label the smooth pursuits
             if verbose:
-                print >> sys.stderr, 'Saccades/blinks/fixations are detected, starting SP detection.'
+                print('Saccades/blinks/fixations are detected, starting SP detection.', file=sys.stderr)
             classified_gaze_points = sp_detector.detect(gaze_points_list)
 
             # Now just dump the resulting structure into .arff files in the respective subdirectory of the @out_folder
@@ -153,7 +155,8 @@ def run_detection(params):
                 ArffHelper.dump(arff_data, open(
                     '{}/{}.arff'.format(full_out_folder, output_file_name), 'w')).close()
         except Exception as e:
-            print >> sys.stderr, 'Had to skip {} due to an error "{}"'.format(movie, e.message)
+            print('Had to skip {} due to an error "{}"'.format(movie, e), file=sys.stderr)
+            print(''.join(traceback.format_exception(None, e, e.__traceback__)))
     return out_folder
 
 
@@ -195,8 +198,8 @@ def create_parameters(config_file=None,
     args_dict = kwargs
 
     # do not include None values
-    dict_candidates = zip(['config_file', 'input_folder', 'gaze_file_pattern', 'output_folder'],
-                          [config_file, input_folder, gaze_file_pattern, output_folder])
+    dict_candidates = list(zip(['config_file', 'input_folder', 'gaze_file_pattern', 'output_folder'],
+                          [config_file, input_folder, gaze_file_pattern, output_folder]))
     args_dict.update({key: value for key, value in dict_candidates if value is not None})
 
     bunch = util.ParameterBunch(args_dict)
@@ -556,7 +559,7 @@ def create_parameters_from_args(parsed_args, ignore_unused_arguments=False):
     # get a dictionary view on this
     args_dict = vars(parsed_args).copy()
     # clean up the args, i.e. remove None values so that they do not remain 'untouched' until the end
-    args_dict = {k: v for k, v in args_dict.iteritems() if v is not None}
+    args_dict = {k: v for k, v in list(args_dict.items()) if v is not None}
 
     # we will pop the arguments from args_dict to ensure no not-used parameters are passed
 
@@ -614,5 +617,5 @@ if __name__ == '__main__':
     args = parse_args()
     parameters = create_parameters_from_args(args)
     if parameters['GeneralArguments'].get('verbose'):
-        print >> sys.stderr, util.pretty_string(parameters)
+        print(util.pretty_string(parameters), file=sys.stderr)
     run_detection(parameters)

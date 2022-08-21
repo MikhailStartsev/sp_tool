@@ -33,7 +33,7 @@ def maybe_cast_to_float(d):
 
 def load_sampling_parameters(args):
     csv_reader = DictReader(open(args.csv))
-    all_events = map(maybe_cast_to_float, csv_reader)
+    all_events = list(map(maybe_cast_to_float, csv_reader))
 
     if not args.split_up_attribute:
         event_types = ['FIX', 'SACCADE', 'SP'] + (['NOISE'] if args.noise else [])
@@ -103,9 +103,9 @@ def load_sampling_parameters(args):
             transition_probabilities[key][key_next] /= transition_denom[key]
 
     total_events = sum(transition_denom.values())
-    a_priori_prob = {k: v / total_events for k, v in transition_denom.iteritems()}
+    a_priori_prob = {k: v / total_events for k, v in transition_denom.items()}
 
-    print 'Skipped', skipped_samples, 'samples/events out, a total of', total_events, 'samples/events analysed'
+    print('Skipped', skipped_samples, 'samples/events out, a total of', total_events, 'samples/events analysed')
 
     return plausible_durations_in_samples, transition_probabilities, a_priori_prob
 
@@ -123,11 +123,11 @@ def compute_mean_std(generator_state):
 
 def generate_next(args, generator_state):
     if generator_state['previous_em'] is None or args.independent:
-        event_type = np.random.choice(generator_state['a_priori_probs'].keys(),
-                                      p=generator_state['a_priori_probs'].values())
+        event_type = np.random.choice(list(generator_state['a_priori_probs'].keys()),
+                                      p=list(generator_state['a_priori_probs'].values()))
     else:
-        event_type = np.random.choice(generator_state['transition_matrix'][generator_state['previous_em']].keys(),
-                                      p=generator_state['transition_matrix'][generator_state['previous_em']].values())
+        event_type = np.random.choice(list(generator_state['transition_matrix'][generator_state['previous_em']].keys()),
+                                      p=list(generator_state['transition_matrix'][generator_state['previous_em']].values()))
 
     if not args.simplify:
         event_duration = np.random.choice(generator_state['plausible_durations'][event_type])
@@ -161,7 +161,7 @@ def label_events(args, event_durations, transition_matrix, a_priori_probs):
 
     if args.output_folder is None:
         args.output_folder = tempfile.mkdtemp(prefix='random_baseline_')
-        print >> sys.stderr, 'Creating a temporary folder for the output in "{}"'.format(args.output_folder)
+        print('Creating a temporary folder for the output in "{}"'.format(args.output_folder), file=sys.stderr)
 
     for root, dirs, files in os.walk(args.input):
         for file in sorted(files):
@@ -202,7 +202,7 @@ def split_up_long_events(args, event_durations, transition_matrix, a_priori_prob
 
     if args.output_folder is None:
         args.output_folder = tempfile.mkdtemp(prefix='random_baseline_')
-        print >> sys.stderr, 'Creating a temporary folder for the output in "{}"'.format(args.output_folder)
+        print('Creating a temporary folder for the output in "{}"'.format(args.output_folder), file=sys.stderr)
 
     generator_state = {
         'previous_em': None,

@@ -143,7 +143,7 @@ def convert(fname, corresponding_video_name,
 
         line_type = values[type_column]
         if line_type == 'SMP':  # sample
-            values = map(float, values[:type_column] + values[type_column + 1:])  # all values except type
+            values = list(map(float, values[:type_column] + values[type_column + 1:]))  # all values except type
             assert len(values) == len(original_attributes), \
                 'Attributes list does not match loaded values: "{}" vs "{}"'.format(arff_obj['attributes'],
                                                                                     values)

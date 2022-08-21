@@ -71,12 +71,12 @@ def calculate_ppd(arff_object, skip_consistency_check=False):
         'DISTANCE': ('distance_mm', lambda val: val * 1e3)
     }
 
-    for obsolete_key, (new_key, value_modifier) in calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.iteritems():
+    for obsolete_key, (new_key, value_modifier) in list(calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.items()):
         if obsolete_key in arff_object['metadata'] and new_key not in arff_object['metadata']:
             warnings.warn('Keys {} are obsolete and will not necessarily be supported in future. '
                           'Consider using their more explicit alternatives: {}'
-                          .format(calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.keys(),
-                                  [val[0] for val in calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.values()]))
+                          .format(list(calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.keys()),
+                                  [val[0] for val in list(calculate_ppd.OBSOLETE_METADATA_KEYS_MAPPING.values())]))
             # replace the key
             arff_object['metadata'][new_key] = value_modifier(arff_object['metadata'].pop(obsolete_key))
 
@@ -117,7 +117,7 @@ def get_xy_moving_average(data, window_size, inplace=False):
         format(window_size)
     if not inplace:
         data = data.copy()
-    offset = (window_size - 1) / 2
+    offset = (window_size - 1) // 2
     for column in ['x', 'y']:
         res = np.cumsum(data[column], dtype=float)
         res[window_size:] = res[window_size:] - res[:-window_size]

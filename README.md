@@ -49,11 +49,8 @@ or, to install it for all users:
 If the dependencies are not installed automatically, you can manually install them with pip
 (installed by `sudo apt install python-pip`):
     
-    $> pip install --user liac-arff numpy scikit-learn python-Levenshtein
+    $> pip install -r requirements.txt
     
-or, alternatively:
-    
-    $> sudo pip install liac-arff numpy scikit-learn python-Levenshtein
 
 
 ### NB: The underlying ARFF library is NOT called "arff", but "liac-arff"! If you get an error from within arff_helper.py, try uninstalling the "arff" library and/or re-installing the "liac-arff".

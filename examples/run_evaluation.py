@@ -118,7 +118,7 @@ def evaluate_prepared_output(in_folder, movies=None,
                              for obj in ground_truth_objects]
 
         em_labels = set().union(*all_em_labels)
-    print >> sys.stderr, 'Will evaluate the following labels:', sorted(em_labels)
+    print('Will evaluate the following labels:', sorted(em_labels), file=sys.stderr)
 
     # verify that the label sets intersect at all
     all_assigned_labels = [set(obj['data']['EYE_MOVEMENT_TYPE']) for obj in assigned_labels_objects]
@@ -129,9 +129,9 @@ def evaluate_prepared_output(in_folder, movies=None,
                       'and algorithmically assigned labels ({})!'.format(sorted(em_labels),
                                                                          sorted(all_assigned_labels)))
     elif len(label_intersection) != len(em_labels):
-        print >> sys.stderr, 'Intersection between evaluated ground truth labels and the algorithmically ' \
+        print('Intersection between evaluated ground truth labels and the algorithmically ' \
                              'assigned labels is not fully covering the set of evaluated labels: ' \
-                             '{} vs {}'.format(sorted(label_intersection), sorted(em_labels))
+                             '{} vs {}'.format(sorted(label_intersection), sorted(em_labels)), file=sys.stderr)
 
     res_stats = {}
 
@@ -206,8 +206,8 @@ def parse_args():
         args.all_files = True
         args.all_eye_movements = True
 
-    print >> sys.stderr, 'For event duration computation assuming {} microseconds in one time unit. Change ' \
-                         'with --microsec, if necessary.'.format(args.microseconds_in_time_unit)
+    print('For event duration computation assuming {} microseconds in one time unit. Change ' \
+                         'with --microsec, if necessary.'.format(args.microseconds_in_time_unit), file=sys.stderr)
 
     return args
 
@@ -224,7 +224,7 @@ if __name__ == '__main__':
                                      only_main_eye_movements=not args.all_eye_movements,
                                      microseconds_in_time_unit=args.microseconds_in_time_unit)
     if args.one_line_output:
-        print stats
+        print(stats)
     else:
         import json
-        print json.dumps(stats, sort_keys=True, separators=[',', ': '], indent=4)
+        print(json.dumps(stats, sort_keys=True, separators=(',', ': '), indent=4))

@@ -86,7 +86,7 @@ class SaccadeDetector(object):
 
         # verify that the timestamps are sorted!
         times = gaze_points['data']['time']
-        assert all(times[i] <= times[i + 1] for i in xrange(len(times) - 1)), \
+        assert all(times[i] <= times[i + 1] for i in range(len(times) - 1)), \
             'Timestamps are not sorted in {}'.format(gaze_points['metadata']['filename'])
         # -1 so that the exact value ends up on the right of the searched timestamp
         searchable_timestamps = times - self.VELOCITY_INTEGRAL_INTERVAL_MICROSEC - 1
@@ -180,7 +180,7 @@ class SaccadeDetector(object):
                 # already labelled this before, ex. as a saccade that started from another seed point
                 continue
             if self.verbose == 2:
-                print >> sys.stderr, 'potential seed index', potential_seed_index
+                print('potential seed index', potential_seed_index, file=sys.stderr)
             # Looking for onset:
             # (1) should be above slow threshold speed
             # (2) should not be a glitch
@@ -235,7 +235,7 @@ class SaccadeDetector(object):
                 continue
 
             if self.verbose == 2:
-                print >> sys.stderr, 'Found onset/offset indices', saccade_onset_index, saccade_offset_index
+                print('Found onset/offset indices', saccade_onset_index, saccade_offset_index, file=sys.stderr)
 
             # now validate the saccade parameters
             # (1) it spans at least the minimal necessary interval
@@ -247,8 +247,8 @@ class SaccadeDetector(object):
                 gaze_points['data']['EYE_MOVEMENT_TYPE'][saccade_onset_index:saccade_offset_index + 1] = 'NOISE'
 
                 if self.verbose == 2:
-                    print >> sys.stderr, 'Discarding due to low duration: needed {}, had {}'.\
-                        format(self.MIN_DURATION_MICROSEC, saccade_time)
+                    print('Discarding due to low duration: needed {}, had {}'.\
+                        format(self.MIN_DURATION_MICROSEC, saccade_time), file=sys.stderr)
                 continue
 
             # (2) mean velocity is not below the slow onset threshold
@@ -264,8 +264,8 @@ class SaccadeDetector(object):
                 # are also discarded (those are often due to some high-velocity samples
                 # going in one direction, then jumping back - which is unbiological).
                 if self.verbose == 2:
-                    print >> sys.stderr, 'Discarding due to low average speed: needed {}, had {}'.format(
-                        self.THRESHOLD_ONSET_SLOW_DEGREE_PER_SEC, mean_speed)
+                    print('Discarding due to low average speed: needed {}, had {}'.format(
+                        self.THRESHOLD_ONSET_SLOW_DEGREE_PER_SEC, mean_speed), file=sys.stderr)
                 continue
 
             # If all is okay, we detected a whole saccade
@@ -282,14 +282,14 @@ class SaccadeDetector(object):
             last_saccade_end = saccade_offset_index
 
             if self.verbose:
-                print >> sys.stderr, '{0} {1:0.1f} {2:0.1f} {3} {4:0.1f} {5:0.1f}'.format(
+                print('{0} {1:0.1f} {2:0.1f} {3} {4:0.1f} {5:0.1f}'.format(
                     gaze_points['data'][saccade_onset_index]['time'],
                     gaze_points['data'][saccade_onset_index]['x'],
                     gaze_points['data'][saccade_onset_index]['y'],
                     gaze_points['data'][saccade_offset_index]['time'],
                     gaze_points['data'][saccade_offset_index]['x'],
                     gaze_points['data'][saccade_offset_index]['y'],
-                )
+                ), file=sys.stderr)
         # final intersaccadic interval, if there is one
         gaze_points['data']['INTERSACC_INTERVAL_INDEX'][last_saccade_end + 1:] = \
             intersaccadic_intervals_count

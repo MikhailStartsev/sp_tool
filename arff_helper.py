@@ -309,7 +309,7 @@ class ArffHelper(object):
         metadata = OrderedDict()
         description = []
 
-        for i in xrange(len(lines)):
+        for i in range(len(lines)):
             if lines[i].lower().startswith(ArffHelper._METADATA_STRING):
                 words = lines[i].split(' ', ArffHelper._METADATA_COLUMNS_COUNT - 1)
                 if words[0].lower() != ArffHelper._METADATA_STRING:
@@ -348,7 +348,7 @@ class ArffHelper(object):
         if 'metadata' in obj:
             metadata_strings = []
             if len(obj['metadata']) != 0:
-                for key, value in obj['metadata'].iteritems():
+                for key, value in obj['metadata'].items():
                     # we dump %@METADATA strings manually to avoid space characters between '%' and '@METADATA'.
                     metadata_strings.append(' '.join(['%' + ArffHelper._METADATA_STRING,
                                                       key,
@@ -358,7 +358,7 @@ class ArffHelper(object):
             if fp is None:
                 return metadata_strings
             else:
-                print >> fp, metadata_strings
+                print(metadata_strings, file=fp)
         else:
             if fp is None:
                 return ''
@@ -376,13 +376,13 @@ class ArffHelper(object):
         :return: converted numpy.dtype from input data_type.
 
         """
-        if data_type in ArffHelper._ATTRIBUTES_TYPE.keys():
+        if data_type in list(ArffHelper._ATTRIBUTES_TYPE.keys()):
             return ArffHelper._ATTRIBUTES_TYPE[data_type]
         else:
             if type(data_type) == list:
-                max_length = max(map(len, data_type))
+                max_length = max(list(map(len, data_type)))
             else:
                 raise ValueError("Wrong data type in attributes. "
                                  "It should be a list of strings or one of the data types in {}".format(
-                                  ', '.join(ArffHelper._ATTRIBUTES_TYPE.keys())))
-            return '|S{}'.format(max_length)
+                                  ', '.join(list(ArffHelper._ATTRIBUTES_TYPE.keys()))))
+            return '|U{}'.format(max_length)

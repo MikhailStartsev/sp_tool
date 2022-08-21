@@ -37,13 +37,13 @@ def dump_events_as_csv(args):
               'clip_name', 'observer_name']
     if args.samples_duration:
         header.append('duration_samples')
-    print >> out, ','.join(header)
+    print(','.join(header), file=out)
 
     whole_data = []
     ppd = util.datasets.get_ppd('GazeCom')
 
     folders_permutation = generate_permutation(args)
-    print >> sys.stderr, 'Using the following folder permutation:', folders_permutation
+    print('Using the following folder permutation:', folders_permutation, file=sys.stderr)
 
     for filename, obj in util.zip_equal(all_filenames, label_objects):
         obj = obj['data']
@@ -80,7 +80,7 @@ def dump_events_as_csv(args):
                                 }
                 if args.samples_duration:
                     one_csv_line['duration_samples'] = len(group_matrix)
-                print >> out, ','.join(map(str, [one_csv_line[x] for x in header]))
+                print(','.join(map(str, [one_csv_line[x] for x in header])), file=out)
                 whole_data.append(one_csv_line)
 
     if args.csv:

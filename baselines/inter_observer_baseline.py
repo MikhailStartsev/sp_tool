@@ -20,7 +20,7 @@ def label_events(args):
 
     if args.output_folder is None:
         args.output_folder = tempfile.mkdtemp(prefix='inter_observer_baseline_')
-        print >> sys.stderr, 'Creating a temporary folder for the output in "{}"'.format(args.output_folder)
+        print('Creating a temporary folder for the output in "{}"'.format(args.output_folder), file=sys.stderr)
 
     for folder_candidate in sorted(os.listdir(args.input)):
         in_subfolder = os.path.join(args.input, folder_candidate)
@@ -34,10 +34,10 @@ def label_events(args):
         matched_observers = all_observers[:]  # copy the list
         while any([x == y for x, y in zip(all_observers, matched_observers)]):
             np.random.shuffle(matched_observers)
-        print >> sys.stderr, 'For the "{}" stimulus, the following observer recordings are matched:'.\
-            format(folder_candidate)
-        print >> sys.stderr, zip([os.path.split(x)[1] for x in all_observers],
-                                 [os.path.split(x)[1] for x in matched_observers])
+        print('For the "{}" stimulus, the following observer recordings are matched:'.\
+            format(folder_candidate), file=sys.stderr)
+        print(list(zip([os.path.split(x)[1] for x in all_observers],
+                                 [os.path.split(x)[1] for x in matched_observers])), file=sys.stderr)
 
         for target_observer, source_observer in zip(all_observers, matched_observers):
             out_fname = os.path.join(out_subfolder, os.path.split(target_observer)[1])
@@ -59,7 +59,7 @@ def label_events(args):
             source_i = 0
             # in case there will be no previously assigned label, take the most probable one
             prev_label = Counter(obj_source['data'][args.expert]).most_common(1)[0][0]
-            for target_i in xrange(len(obj_target['data'])):
+            for target_i in range(len(obj_target['data'])):
                 assigned_label = None
                 if source_i >= len(obj_source['data']):
                     # @source_obj ran out already, just duplicate the label

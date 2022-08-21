@@ -53,9 +53,9 @@ class BlinkDetector(object):
         assert len(blink_onsets) == len(blink_offsets)
         for onset, offset in zip(blink_onsets, blink_offsets):
             if self.verbose:
-                print >> sys.stderr, "Found blink from {} to {}".format(
+                print("Found blink from {} to {}".format(
                     times[onset], times[offset]
-                )
+                ), file=sys.stderr)
             # go back in time and look for a saccade
             onset_candidate = onset
             while onset_candidate >= 0 \
@@ -84,9 +84,9 @@ class BlinkDetector(object):
                 # otherwise just continue the search forwards
                 offset_candidate += 1
             if self.verbose:
-                print >> sys.stderr, "Extended it to {} {}".format(
+                print("Extended it to {} {}".format(
                     times[onset], times[offset]
-                )
+                ), file=sys.stderr)
             gaze_points['data'][onset:offset + 1]['EYE_MOVEMENT_TYPE'] = 'BLINK'
             # this is not a saccade anymore
             gaze_points['data'][onset:offset + 1]['SACC_INTERVAL_INDEX'] = -1
