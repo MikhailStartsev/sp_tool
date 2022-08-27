@@ -55,7 +55,7 @@ If the dependencies are not installed automatically, you can manually install th
 
 ### NB: The underlying ARFF library is NOT called "arff", but "liac-arff"! If you get an error from within arff_helper.py, try uninstalling the "arff" library and/or re-installing the "liac-arff".
 
-The the scikit-learn version has to be at least 0.18.
+The versions specified in the `requirements.txt` file have been tested to be compatible with the package code with Python 3.10 under Windows 11.
 
 # II. USAGE
 
@@ -129,7 +129,7 @@ The rest of the distribution mainly consists of the following files:
   - saccade_detector.py, blink_detector.py, fixation_detector.py and sp_detector.py, which perform the actual eye movement classification. sp_detection.py contains the actual SP-DBSCAN implementation. It supports one extra mode of operation compared to regular DBSCAN (in class DBSCANWithMinObservers): setting a threshold for the number of different observers within the neighbourhood (instead of specifying a threshold for the number of different points).
   - evaluate.py - comparing the output of the algorithm (.arff files with an EYE_MOVEMENT_TYPE field in each) with the hand-labelled ground truth (in the format of the output of the tool in [2])
   - recording_processor.py - a set of methods to load the recording data and its preprocessing.
-  - examples/ - a folder with various use-cases for this tool, including converting data produced by EyeLink or SMI eye trackers to ARFF format and evaluating on the GazeCom hand-labelled ground truth [4] labels.
+  - examples/ - a folder with various use-cases for this tool, including converting data produced by EyeLink or SMI eye trackers to ARFF format **and evaluating on the GazeCom hand-labelled ground truth [4] labels**.
 
 # IV. LICENSE
 
