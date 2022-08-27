@@ -4,8 +4,8 @@ import numpy as np
 import abc
 import copy
 
-from arff_helper import ArffHelper
-from recording_processor import RecordingProcessor
+from sp_tool.arff_helper import ArffHelper
+from sp_tool.recording_processor import RecordingProcessor
 
 
 class SmoothPursuitDetector(object):

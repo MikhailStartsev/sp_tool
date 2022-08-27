@@ -5,7 +5,8 @@ import unittest
 import os
 import numpy as np
 import arff
-from arff_helper import ArffHelper
+
+from sp_tool.arff_helper import ArffHelper
 
 
 class ArffHelperTest(unittest.TestCase):

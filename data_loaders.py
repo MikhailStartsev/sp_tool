@@ -5,7 +5,7 @@ from functools import wraps
 from collections import OrderedDict
 import inspect
 
-from arff_helper import ArffHelper
+from sp_tool.arff_helper import ArffHelper
 import util
 
 EM_VALUE_MAPPING_DEFAULT = {

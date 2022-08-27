@@ -10,13 +10,13 @@ from collections import defaultdict, OrderedDict
 import json
 import traceback
 
-from saccade_detector import SaccadeDetector
-from blink_detector import BlinkDetector
-from fixation_detector import FixationDetector
-from recording_processor import RecordingProcessor
-from sp_detector import SmoothPursuitDetector
-from arff_helper import ArffHelper
-import util
+from sp_tool.saccade_detector import SaccadeDetector
+from sp_tool.blink_detector import BlinkDetector
+from sp_tool.fixation_detector import FixationDetector
+from sp_tool.recording_processor import RecordingProcessor
+from sp_tool.sp_detector import SmoothPursuitDetector
+from sp_tool.arff_helper import ArffHelper
+from sp_tool import util
 
 # This file comprises a very flexible console interface (see `python run_detection.py -h`)
 # as well as a programmatic interface (through a pair of function calls: create_parameters() and run_detection() ).

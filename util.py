@@ -4,7 +4,7 @@ import json
 import math
 import numpy as np
 
-from arff_helper import ArffHelper
+from sp_tool.arff_helper import ArffHelper
 
 
 class ParameterBunch(object):

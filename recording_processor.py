@@ -3,11 +3,11 @@
 import sys
 import warnings
 
-import data_loaders
-from saccade_detector import SaccadeDetector
-from blink_detector import BlinkDetector
-from fixation_detector import FixationDetector
-import util
+from sp_tool import data_loaders
+from sp_tool.saccade_detector import SaccadeDetector
+from sp_tool.blink_detector import BlinkDetector
+from sp_tool.fixation_detector import FixationDetector
+from sp_tool import util
 
 EM_TYPE_ATTRIBUTE_NAME = 'EYE_MOVEMENT_TYPE'
 EM_TYPE_ARFF_DATA_TYPE = ['UNKNOWN', 'FIX', 'SACCADE', 'SP', 'NOISE', 'BLINK', 'NOISE_CLUSTER', 'PSO']

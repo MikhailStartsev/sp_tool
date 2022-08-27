@@ -11,8 +11,8 @@ import copy
 from sklearn.metrics import cohen_kappa_score
 from jellyfish import levenshtein_distance
 
-from data_loaders import EM_VALUE_MAPPING_DEFAULT
-import util
+from sp_tool.data_loaders import EM_VALUE_MAPPING_DEFAULT
+from sp_tool import util
 
 
 class Event(object):

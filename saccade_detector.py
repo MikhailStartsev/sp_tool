@@ -3,8 +3,8 @@ import copy
 
 import numpy as np
 
-import util
-from arff_helper import ArffHelper
+from sp_tool import util
+from sp_tool.arff_helper import ArffHelper
 
 
 class SaccadeDetector(object):
